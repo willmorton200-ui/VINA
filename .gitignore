@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.pt
+*.pth
+*.bin
+*.onnx
+.ipynb_checkpoints/
+.vscode/
+.idea/
+outputs/
+ready_dataset/
+roboflow_bottle_labels/
+roboflow_dataset/
+dataset_for_yolo/
+output_dataset/

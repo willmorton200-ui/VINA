@@ -1,0 +1,33 @@
+{
+  "id": "imported_VINA_1786893888",
+  "name": "Wine Bottle Labels (Legacy VINA)",
+  "path": "D:\\VINA",
+  "created_at": "2026-08-16T15:24:48Z",
+  "updated_at": "2026-08-16T15:24:48Z",
+  "description": "Auto-imported existing dataset from D:\\VINA",
+  "classes": [
+    "bottle_label",
+    "bottle",
+    "cap",
+    "barcode"
+  ],
+  "task_type": "segmentation",
+  "default_model": "yolov8s-seg.pt",
+  "data_yaml": "D:\\VINA\\dataset_for_yolo\\data.yaml",
+  "folders": {
+    "root": "D:\\VINA",
+    "for_dataset": "D:\\VINA\\for_dataset",
+    "ready_dataset": "D:\\VINA\\ready_dataset",
+    "output_dataset": "D:\\VINA\\output_dataset",
+    "roboflow_dataset": "D:\\VINA\\roboflow_dataset",
+    "models": "D:\\VINA\\models",
+    "metrics": "D:\\VINA\\metrics",
+    "inferences": "D:\\VINA\\inferences"
+  },
+  "stats": {
+    "raw_images_count": 0,
+    "labeled_images_count": 0,
+    "models_count": 0,
+    "inferences_count": 0
+  }
+}

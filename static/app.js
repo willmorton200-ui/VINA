@@ -1,0 +1,518 @@
+/**
+ * VINA Cylindrical Dewarping Studio - Frontend Logic
+ */
+
+document.addEventListener("DOMContentLoaded", () => {
+  // Elements
+  const samplesContainer = document.getElementById("samples-container");
+  const tabBtnSamples = document.getElementById("tab-btn-samples");
+  const tabBtnUpload = document.getElementById("tab-btn-upload");
+  const tabSamples = document.getElementById("tab-samples");
+  const tabUpload = document.getElementById("tab-upload");
+  const dropZone = document.getElementById("drop-zone");
+  const fileInput = document.getElementById("file-input");
+  const btnBrowse = document.getElementById("btn-browse");
+  
+  const stepperSection = document.getElementById("stepper-section");
+  const statusBanner = document.getElementById("status-banner");
+  const resultsSection = document.getElementById("results-section");
+  
+  // Image Views
+  const imgOrigSrc = document.getElementById("img-original-src");
+  const imgDewarpedSrc = document.getElementById("img-dewarped-src");
+  const dewarpedOverlay = document.getElementById("dewarped-overlay");
+  const splitHandle = document.getElementById("split-handle");
+  const splitContainer = document.getElementById("split-container");
+  
+  const sideContainer = document.getElementById("side-container");
+  const sideImgOrig = document.getElementById("side-img-orig");
+  const sideImgDewarped = document.getElementById("side-img-dewarped");
+  
+  const annotatedContainer = document.getElementById("annotated-container");
+  const annotatedImg = document.getElementById("annotated-img");
+  
+  // Toggles
+  const toggleSplitView = document.getElementById("toggle-split-view");
+  const toggleSideView = document.getElementById("toggle-side-view");
+  const toggleAnnotatedView = document.getElementById("toggle-annotated-view");
+  
+  // OCR & Data elements
+  const ocrFullText = document.getElementById("ocr-full-text");
+  const tokensFlow = document.getElementById("tokens-flow");
+  const codesContainer = document.getElementById("codes-container");
+  const codesList = document.getElementById("codes-list");
+  const catalogBox = document.getElementById("catalog-box");
+  const catRefImg = document.getElementById("cat-ref-img");
+  const catDewarpImg = document.getElementById("cat-dewarp-img");
+  const valSsim = document.getElementById("val-ssim");
+  const valNrmse = document.getElementById("val-nrmse");
+  const valMse = document.getElementById("val-mse");
+  const totalTimeBadge = document.getElementById("total-time-badge");
+  const latencyBars = document.getElementById("latency-bars");
+  const currentFilenameBadge = document.getElementById("current-filename-badge");
+  
+  // Diagnostic Images
+  const stageImgMask = document.getElementById("stage-img-mask");
+  const stageImgRetinex = document.getElementById("stage-img-retinex");
+  const stageImgSauvola = document.getElementById("stage-img-sauvola");
+  const stageImgFeatures = document.getElementById("stage-img-features");
+  const stageImgMesh = document.getElementById("stage-img-mesh");
+  const stageImgDewarpDiag = document.getElementById("stage-img-dewarp-diag");
+  const stageImgAnnotatedDiag = document.getElementById("stage-img-annotated-diag");
+  
+  const camParamsTable = document.getElementById("cam-params-table");
+  const solverParamsTable = document.getElementById("solver-params-table");
+  const ocrStatsTable = document.getElementById("ocr-stats-table");
+  
+  // Actions
+  const btnDownloadFlat = document.getElementById("btn-download-flat");
+  const btnDownloadJson = document.getElementById("btn-download-json");
+  const btnCopyOcr = document.getElementById("btn-copy-ocr");
+  const toast = document.getElementById("toast");
+  const toastMessage = document.getElementById("toast-message");
+  const btnRestoreSamples = document.getElementById("btn-restore-samples");
+  const hiddenCountEl = document.getElementById("hidden-count");
+  
+  let currentResultData = null;
+  let allLoadedSamples = [];
+
+  // Helper functions for UI Soft-Delete (Hidden Samples)
+  function getHiddenSamples() {
+    try {
+      return JSON.parse(localStorage.getItem("vina_hidden_samples") || "[]");
+    } catch {
+      return [];
+    }
+  }
+
+  function setHiddenSamples(arr) {
+    localStorage.setItem("vina_hidden_samples", JSON.stringify(arr));
+  }
+
+  // 1. Initial Load: Check Health & Fetch Sample Bottles
+  fetchHealth();
+  fetchSamples();
+
+  async function fetchHealth() {
+    try {
+      const res = await fetch("/api/health");
+      const data = await res.json();
+      const gpuEl = document.getElementById("gpu-status-text");
+      if (data.gpu_name && data.gpu_name !== "None (CPU)") {
+        gpuEl.textContent = `${data.gpu_name} • CUDA Active`;
+      } else {
+        gpuEl.textContent = "CPU Mode Active";
+      }
+    } catch (e) {
+      console.warn("Health check error:", e);
+    }
+  }
+
+  async function fetchSamples() {
+    try {
+      const res = await fetch("/api/samples");
+      const data = await res.json();
+      allLoadedSamples = data.samples || [];
+      renderSamples(allLoadedSamples);
+    } catch (e) {
+      samplesContainer.innerHTML = `<div class="error-msg">Ошибка загрузки образцов: ${e.message}</div>`;
+    }
+  }
+
+  function renderSamples(samples) {
+    samplesContainer.innerHTML = "";
+    const hidden = getHiddenSamples();
+    const visibleSamples = samples.filter(s => !hidden.includes(s.filename));
+
+    // Update restore button state
+    const hiddenCount = samples.length - visibleSamples.length;
+    if (hiddenCount > 0) {
+      if (btnRestoreSamples) {
+        btnRestoreSamples.classList.remove("hidden");
+        if (hiddenCountEl) hiddenCountEl.textContent = hiddenCount;
+      }
+    } else {
+      if (btnRestoreSamples) btnRestoreSamples.classList.add("hidden");
+    }
+
+    if (visibleSamples.length === 0) {
+      samplesContainer.innerHTML = `
+        <div style="padding: 24px 10px; color: var(--apple-text-secondary); font-size: 13px;">
+          Все образцы скрыты из интерфейса. 
+          <a href="#" id="link-restore-all" style="color: var(--apple-blue); text-decoration: underline; margin-left: 6px;">Восстановить все</a>
+        </div>
+      `;
+      const linkRestore = document.getElementById("link-restore-all");
+      if (linkRestore) {
+        linkRestore.addEventListener("click", (e) => {
+          e.preventDefault();
+          setHiddenSamples([]);
+          renderSamples(allLoadedSamples);
+          showToast("Все образцы возвращены в интерфейс");
+        });
+      }
+      return;
+    }
+
+    visibleSamples.forEach(sample => {
+      const card = document.createElement("div");
+      card.className = "sample-item-card";
+      card.innerHTML = `
+        <button class="btn-remove-sample" title="Убрать из списка (без удаления файла с диска)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+        <img class="sample-thumb" src="${sample.cam_url}" alt="${sample.title}" loading="lazy">
+        <div class="sample-title">${sample.title}</div>
+        <div class="sample-tag">${sample.has_catalog ? "✓ Эталон в базе" : "Камера"}</div>
+      `;
+
+      // Remove button click (UI only)
+      const btnRemove = card.querySelector(".btn-remove-sample");
+      btnRemove.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const currentHidden = getHiddenSamples();
+        if (!currentHidden.includes(sample.filename)) {
+          currentHidden.push(sample.filename);
+          setHiddenSamples(currentHidden);
+        }
+        card.style.opacity = "0";
+        card.style.transform = "scale(0.85)";
+        setTimeout(() => {
+          renderSamples(allLoadedSamples);
+          showToast(`Файл "${sample.title}" убран из интерфейса (на диске сохранен)`);
+        }, 180);
+      });
+
+      card.addEventListener("click", () => {
+        document.querySelectorAll(".sample-item-card").forEach(c => c.classList.remove("active"));
+        card.classList.add("active");
+        processSampleBottle(sample.filename);
+      });
+
+      samplesContainer.appendChild(card);
+    });
+  }
+
+  if (btnRestoreSamples) {
+    btnRestoreSamples.addEventListener("click", () => {
+      setHiddenSamples([]);
+      renderSamples(allLoadedSamples);
+      showToast("Все скрытые файлы возвращены в интерфейс");
+    });
+  }
+
+  // Tab switching (Dataset vs Upload)
+  tabBtnSamples.addEventListener("click", () => {
+    tabBtnSamples.classList.add("active");
+    tabBtnUpload.classList.remove("active");
+    tabSamples.classList.remove("hidden");
+    tabUpload.classList.add("hidden");
+  });
+
+  tabBtnUpload.addEventListener("click", () => {
+    tabBtnUpload.classList.add("active");
+    tabBtnSamples.classList.remove("active");
+    tabUpload.classList.remove("hidden");
+    tabSamples.classList.add("hidden");
+  });
+
+  // Drag & drop upload
+  btnBrowse.addEventListener("click", (e) => {
+    e.stopPropagation();
+    fileInput.click();
+  });
+  dropZone.addEventListener("click", () => fileInput.click());
+
+  dropZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropZone.classList.add("dragover");
+  });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+  dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.classList.remove("dragover");
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      uploadCustomFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  fileInput.addEventListener("change", (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      uploadCustomFile(e.target.files[0]);
+    }
+  });
+
+  // Processing Functions
+  async function processSampleBottle(filename) {
+    showLoading(`Обработка образца: ${filename}`);
+    try {
+      const res = await fetch("/api/process_sample", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sample_filename: filename })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      renderResults(data);
+    } catch (e) {
+      showToast(`Ошибка: ${e.message}`);
+    } finally {
+      hideLoading();
+    }
+  }
+
+  async function uploadCustomFile(file) {
+    showLoading(`Анализ фото: ${file.name}`);
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch("/api/process_upload", {
+        method: "POST",
+        body: formData
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      renderResults(data);
+    } catch (e) {
+      showToast(`Ошибка: ${e.message}`);
+    } finally {
+      hideLoading();
+    }
+  }
+
+  function showLoading(headline) {
+    statusBanner.classList.remove("hidden");
+    stepperSection.classList.remove("hidden");
+    resultsSection.classList.add("hidden");
+    document.getElementById("status-headline").textContent = headline;
+  }
+
+  function hideLoading() {
+    statusBanner.classList.add("hidden");
+  }
+
+  // Render Pipeline Results
+  function renderResults(data) {
+    currentResultData = data;
+    resultsSection.classList.remove("hidden");
+    currentFilenameBadge.textContent = data.filename || "image.jpg";
+
+    const art = data.artifacts || {};
+
+    // 1. Image viewers
+    imgOrigSrc.src = art.original || art.cropped;
+    imgDewarpedSrc.src = art.dewarped;
+    sideImgOrig.src = art.original || art.cropped;
+    sideImgDewarped.src = art.dewarped;
+    annotatedImg.src = art.annotated;
+
+    btnDownloadFlat.href = art.dewarped;
+    btnDownloadFlat.download = `${data.filename || "dewarped"}_flattened.jpg`;
+
+    // Reset split slider to 50%
+    setSplitPosition(50);
+
+    // 2. OCR Text & Tokens
+    ocrFullText.textContent = data.full_text || "Текст не обнаружен";
+    
+    tokensFlow.innerHTML = "";
+    (data.text_blocks || []).forEach(tb => {
+      const pill = document.createElement("div");
+      pill.className = "token-pill";
+      pill.innerHTML = `<span>${tb.text}</span><span class="token-conf">${Math.round(tb.confidence * 100)}%</span>`;
+      tokensFlow.appendChild(pill);
+    });
+
+    // 3. Barcodes / QR
+    if (data.barcodes && data.barcodes.length > 0) {
+      codesContainer.classList.remove("hidden");
+      codesList.innerHTML = data.barcodes.map(c => `
+        <div class="code-badge-item">
+          <strong>[${c.type}]</strong> <span>${c.data}</span>
+        </div>
+      `).join("");
+    } else {
+      codesContainer.classList.add("hidden");
+    }
+
+    // 4. Catalog Comparison (if available)
+    if (data.has_reference && data.metrics && Object.keys(data.metrics).length > 0) {
+      catalogBox.classList.remove("hidden");
+      catRefImg.src = art.catalog_reference || "";
+      catDewarpImg.src = art.dewarped || "";
+      valSsim.textContent = `${data.metrics.ssim_percent || 0}%`;
+      valNrmse.textContent = data.metrics.nrmse || "0.00";
+      valMse.textContent = data.metrics.mse || "0";
+    } else {
+      catalogBox.classList.add("hidden");
+    }
+
+    // 5. Latency Breakdown
+    const timings = data.timings || {};
+    totalTimeBadge.textContent = `${(timings.total_ms / 1000).toFixed(2)} сек`;
+    
+    const stageNames = [
+      { key: "stage1_ms", name: "1. Сегментация & Retinex" },
+      { key: "stage2_ms", name: "2. Линии & LSD" },
+      { key: "stage3_ms", name: "3. 3D GCS Оптимизация" },
+      { key: "stage4_ms", name: "4. TPS Dewarping" },
+      { key: "stage5_ms", name: "5. OCR & Декодирование" }
+    ];
+
+    latencyBars.innerHTML = stageNames.map(s => {
+      const ms = timings[s.key] || 0;
+      const pct = Math.max(4, Math.min(100, (ms / (timings.total_ms || 1)) * 100));
+      return `
+        <div class="latency-row">
+          <span class="latency-name">${s.name}</span>
+          <div class="latency-track">
+            <div class="latency-fill" style="width: ${pct}%"></div>
+          </div>
+          <span class="latency-ms">${ms} ms</span>
+        </div>
+      `;
+    }).join("");
+
+    // 6. Diagnostics Tab Content
+    stageImgMask.src = art.mask || "";
+    stageImgRetinex.src = art.retinex || "";
+    stageImgSauvola.src = art.binarized || "";
+    stageImgFeatures.src = art.features || "";
+    stageImgMesh.src = art.mesh || "";
+    stageImgDewarpDiag.src = art.dewarped || "";
+    stageImgAnnotatedDiag.src = art.annotated || "";
+
+    // Camera params table
+    const cam = data.cam_info || {};
+    camParamsTable.innerHTML = `
+      <div class="param-row"><span class="param-key">Угол наклона (Tilt):</span><span class="param-val">${cam.tilt_angle_deg?.toFixed(2)}°</span></div>
+      <div class="param-row"><span class="param-key">Фокусное расстояние (Focal):</span><span class="param-val">${cam.estimated_focal_length?.toFixed(1)} px</span></div>
+      <div class="param-row"><span class="param-key">Средняя кривизна текста:</span><span class="param-val">${cam.mean_curvature?.toFixed(5)}</span></div>
+      <div class="param-row"><span class="param-key">Центральная ось x:</span><span class="param-val">${cam.center_axis_x?.toFixed(1)} px</span></div>
+    `;
+
+    // Solver params table
+    const opt = data.opt_params || {};
+    solverParamsTable.innerHTML = `
+      <div class="param-row"><span class="param-key">Радиус цилиндра R:</span><span class="param-val">${opt.cylinder_radius?.toFixed(1)} px</span></div>
+      <div class="param-row"><span class="param-key">Ось цилиндра c_x:</span><span class="param-val">${opt.center_x?.toFixed(1)} px</span></div>
+      <div class="param-row"><span class="param-key">Кривизна верха (k_top):</span><span class="param-val">${opt.k_top?.toFixed(3)}</span></div>
+      <div class="param-row"><span class="param-key">Кривизна низа (k_bot):</span><span class="param-val">${opt.k_bot?.toFixed(3)}</span></div>
+      <div class="param-row"><span class="param-key">Сходимость солвера:</span><span class="param-val" style="color: #34C759;">${opt.converged ? "Успешно" : "Сходимость достигнута"}</span></div>
+    `;
+
+    // OCR stats table
+    ocrStatsTable.innerHTML = `
+      <div class="param-row"><span class="param-key">Всего слов / токенов:</span><span class="param-val">${data.num_words || 0}</span></div>
+      <div class="param-row"><span class="param-key">Распознанные коды:</span><span class="param-val">${(data.barcodes || []).length}</span></div>
+      <div class="param-row"><span class="param-key">Средняя уверенность:</span><span class="param-val">${computeAvgConfidence(data.text_blocks)}%</span></div>
+    `;
+
+    // Scroll smoothly to results
+    resultsSection.scrollIntoView({ behavior: "smooth" });
+  }
+
+  function computeAvgConfidence(blocks) {
+    if (!blocks || blocks.length === 0) return "0";
+    const sum = blocks.reduce((acc, b) => acc + (b.confidence || 0), 0);
+    return Math.round((sum / blocks.length) * 100);
+  }
+
+  // Interactive Split Slider Logic
+  let isDragging = false;
+
+  function setSplitPosition(pct) {
+    pct = Math.max(0, Math.min(100, pct));
+    dewarpedOverlay.style.width = `${pct}%`;
+    splitHandle.style.left = `${pct}%`;
+  }
+
+  function handleSplitDrag(e) {
+    if (!isDragging) return;
+    const rect = splitContainer.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const offsetX = clientX - rect.left;
+    const pct = (offsetX / rect.width) * 100;
+    setSplitPosition(pct);
+  }
+
+  splitHandle.addEventListener("mousedown", () => { isDragging = true; });
+  window.addEventListener("mouseup", () => { isDragging = false; });
+  window.addEventListener("mousemove", handleSplitDrag);
+
+  splitHandle.addEventListener("touchstart", () => { isDragging = true; });
+  window.addEventListener("touchend", () => { isDragging = false; });
+  window.addEventListener("touchmove", handleSplitDrag);
+
+  // View Mode Toggles (Split / Side / Annotated)
+  toggleSplitView.addEventListener("click", () => {
+    setActiveViewToggle(toggleSplitView);
+    splitContainer.classList.remove("hidden");
+    sideContainer.classList.add("hidden");
+    annotatedContainer.classList.add("hidden");
+  });
+
+  toggleSideView.addEventListener("click", () => {
+    setActiveViewToggle(toggleSideView);
+    splitContainer.classList.add("hidden");
+    sideContainer.classList.remove("hidden");
+    annotatedContainer.classList.add("hidden");
+  });
+
+  toggleAnnotatedView.addEventListener("click", () => {
+    setActiveViewToggle(toggleAnnotatedView);
+    splitContainer.classList.add("hidden");
+    sideContainer.classList.add("hidden");
+    annotatedContainer.classList.remove("hidden");
+  });
+
+  function setActiveViewToggle(btn) {
+    [toggleSplitView, toggleSideView, toggleAnnotatedView].forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+  }
+
+  // Diagnostic Stage Tab Switching
+  document.querySelectorAll(".stage-tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".stage-tab-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".stage-content-panel").forEach(p => p.classList.add("hidden"));
+      
+      btn.classList.add("active");
+      const stageNum = btn.getAttribute("data-stage");
+      const panel = document.getElementById(`stage-panel-${stageNum}`);
+      if (panel) panel.classList.remove("hidden");
+    });
+  });
+
+  // Action Buttons
+  btnCopyOcr.addEventListener("click", () => {
+    const text = ocrFullText.textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      showToast("Текст скопирован в буфер обмена");
+    });
+  });
+
+  btnDownloadJson.addEventListener("click", () => {
+    if (!currentResultData) return;
+    const blob = new Blob([JSON.stringify(currentResultData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${currentResultData.filename || "result"}_data.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("JSON результат сохранён");
+  });
+
+  function showToast(msg) {
+    toastMessage.textContent = msg;
+    toast.classList.remove("hidden");
+    setTimeout(() => {
+      toast.classList.add("hidden");
+    }, 3000);
+  }
+
+});
