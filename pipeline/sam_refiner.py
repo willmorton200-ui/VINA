@@ -106,6 +106,49 @@ class SAMRefiner:
         roi_bgr = img_bgr[roi_y1:roi_y2, roi_x1:roi_x2]
         roi_rgb = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2RGB)
 
+        # Analyze central paper color vs corner anchors
+        cx_local = (bx1 + bx2) // 2 - roi_x1
+        cy_local = (by1 + by2) // 2 - roi_y1
+        
+        roi_lab = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2LAB)
+        l_channel = roi_lab[:, :, 0]
+        
+        c_rad = max(4, int(min(bw, bh) * 0.08))
+        cx_c = int(np.clip(cx_local, 0, roi_bgr.shape[1] - 1))
+        cy_c = int(np.clip(cy_local, 0, roi_bgr.shape[0] - 1))
+        center_patch = l_channel[max(0, cy_c - c_rad):min(roi_bgr.shape[0], cy_c + c_rad),
+                                 max(0, cx_c - c_rad):min(roi_bgr.shape[1], cx_c + c_rad)]
+        center_L = float(np.median(center_patch)) if center_patch.size > 0 else 128.0
+
+        # Anchor candidates: Center is always positive (label)
+        pts_list = [[cx_local, cy_local]]
+        labels_list = [1]
+
+        margin_x = int(bw * 0.06)
+        margin_y = int(bh * 0.06)
+        corner_pts = [
+            (bx1 - roi_x1 + margin_x, by1 - roi_y1 + margin_y),
+            (bx2 - roi_x1 - margin_x, by1 - roi_y1 + margin_y),
+            (bx1 - roi_x1 + margin_x, by2 - roi_y1 - margin_y),
+            (bx2 - roi_x1 - margin_x, by2 - roi_y1 - margin_y),
+        ]
+
+        for px, py in corner_pts:
+            px_c = int(np.clip(px, 0, roi_bgr.shape[1] - 1))
+            py_c = int(np.clip(py, 0, roi_bgr.shape[0] - 1))
+            pt_L = float(l_channel[py_c, px_c])
+            # If corner is significantly darker than center paper (e.g. dark wine/shelf glass),
+            # mark it as negative prompt (0) to prevent SAM from spilling into bottle base/shoulders!
+            if pt_L < center_L - 35.0 and pt_L < 90.0:
+                pts_list.append([px, py])
+                labels_list.append(0)
+            else:
+                pts_list.append([px, py])
+                labels_list.append(1)
+
+        pts_local = np.array(pts_list, dtype=np.float32)
+        labels_local = np.array(labels_list, dtype=np.int32)
+
         with torch.no_grad():
             with torch.amp.autocast('cuda', enabled=("cuda" in str(self.device)), dtype=torch.float16):
                 self.predictor.set_image(roi_rgb)
@@ -116,16 +159,23 @@ class SAMRefiner:
                     torch.tensor(local_box, device=self.device),
                     roi_rgb.shape[:2]
                 )
+                transformed_pts = self.predictor.transform.apply_coords_torch(
+                    torch.tensor(pts_local[None, :], device=self.device),
+                    roi_rgb.shape[:2]
+                )
+                labels_tensor = torch.tensor(labels_local[None, :], device=self.device)
 
                 masks, scores, _ = self.predictor.predict_torch(
-                    point_coords=None,
-                    point_labels=None,
+                    point_coords=transformed_pts,
+                    point_labels=labels_tensor,
                     boxes=transformed_boxes,
-                    multimask_output=False
+                    multimask_output=True
                 )
 
-        local_mask = masks[0, 0].cpu().numpy().astype(np.uint8) * 255
-        score = float(scores[0, 0].cpu().numpy()) if scores is not None else 1.0
+        # Pick best scoring mask
+        best_mask_idx = torch.argmax(scores[0]).item()
+        local_mask = masks[0, best_mask_idx].cpu().numpy().astype(np.uint8) * 255
+        score = float(scores[0, best_mask_idx].cpu().numpy()) if scores is not None else 1.0
 
         # Paste back into full image mask
         full_mask = np.zeros((h, w), dtype=np.uint8)

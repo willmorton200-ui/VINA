@@ -110,90 +110,139 @@ class Stage1Preprocessor:
 
                     num_bottles = max(len(bottle_candidates), 1 if label_candidates else 0)
 
-                    # Filter out mega-boxes (whole-shelf false positives) and thin slivers
-                    valid_label_boxes = []
+                    # Filter candidates: Apply geometry, confidence-weighting, and hierarchical nested suppression
+                    parsed_candidates = []
+
                     for idx, box, conf in label_candidates:
-                        bx1, by1, bx2, by2 = box
+                        bx1, by1, bx2, by2 = [int(v) for v in box]
                         bw_box, bh_box = max(1, bx2 - bx1), max(1, by2 - by1)
-                        area = bw_box * bh_box
-                        area_ratio = area / float(w * h)
                         ar = bw_box / float(bh_box)
+                        area = bw_box * bh_box
                         
-                        # Discard whole-shelf mega boxes and tiny noise
-                        if 0.015 <= area_ratio <= 0.55 and bw_box <= 0.70 * w and bh_box <= 0.75 * h:
-                            ar_penalty = 1.0 if 0.50 <= ar <= 2.2 else 0.25
-                            dist_x = abs((bx1 + bx2) / 2.0 - img_center[0])
-                            center_factor = max(0.5, 1.0 - (dist_x / (w * 0.5)))
-                            score = area * float(conf) * ar_penalty * center_factor
-                            valid_label_boxes.append((score, box, idx, conf))
+                        # Basic sanity filters
+                        if ar < 0.15 or ar > 3.5:
+                            continue
+                        if bw_box > 0.90 * w or bh_box > 0.92 * h:
+                            continue
+                        if area < 0.005 * (w * h):
+                            continue
 
-                    valid_label_boxes.sort(key=lambda item: item[0], reverse=True)
+                        m_full = None
+                        total_contact = 0
+                        if masks_data is not None and idx < len(masks_data):
+                            m_raw = masks_data[idx]
+                            m_full = (cv2.resize(m_raw, (w, h)) > 0.5).astype(np.uint8) * 255
+                            m_full = self._keep_largest_component(m_full)
+                            
+                            top_contact = np.count_nonzero(m_full[:2, :])
+                            bot_contact = np.count_nonzero(m_full[h-2:, :])
+                            left_contact = np.count_nonzero(m_full[:, :2])
+                            right_contact = np.count_nonzero(m_full[:, w-2:])
+                            total_contact = top_contact + bot_contact + left_contact + right_contact
 
-                    if valid_label_boxes:
-                        best_score, best_box, best_idx, best_conf = valid_label_boxes[0]
-                        dominant_label_bbox = [int(v) for v in best_box]
+                        touches_border = (bx1 <= 10 or by1 <= 10 or bx2 >= w - 10 or by2 >= h - 10)
+                        
+                        parsed_candidates.append({
+                            "idx": idx,
+                            "box": [bx1, by1, bx2, by2],
+                            "bw": bw_box,
+                            "bh": bh_box,
+                            "ar": ar,
+                            "area": area,
+                            "conf": float(conf),
+                            "mask": m_full,
+                            "total_contact": total_contact,
+                            "touches_border": touches_border
+                        })
 
-                    # Pick dominant bottle candidate
-                    best_bottle_score = -1.0
-                    for idx, box, conf in bottle_candidates:
-                        bx1, by1, bx2, by2 = box
-                        bw_box, bh_box = max(1, bx2 - bx1), max(1, by2 - by1)
-                        area_ratio = (bw_box * bh_box) / float(w * h)
-                        if bw_box <= 0.70 * w and area_ratio <= 0.85:
-                            dist_x = abs((bx1 + bx2) / 2.0 - img_center[0])
-                            center_score = max(0.1, 1.0 - (dist_x / (w * 0.45)))
-                            score = center_score * float(conf)
-                            if score > best_bottle_score:
-                                best_bottle_score = score
-                                dominant_bottle_bbox = [int(v) for v in box]
+                    # Hierarchical nested suppression: if Candidate A is an oversized container enclosing Candidate B (e.g. bottle body enclosing label),
+                    # and B has high confidence, suppress container A.
+                    suppressed_indices = set()
+                    for i, c_a in enumerate(parsed_candidates):
+                        ax1, ay1, ax2, ay2 = c_a["box"]
+                        # Only whole bottle bodies (spanning majority of frame height/area) are containers
+                        is_container = (c_a["bh"] >= 0.75 * h or c_a["area"] >= 0.50 * (w * h))
+                        if not is_container:
+                            continue
+                        for j, c_b in enumerate(parsed_candidates):
+                            if i == j:
+                                continue
+                            bx1, by1, bx2, by2 = c_b["box"]
+                            ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+                            ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+                            if ix2 > ix1 and iy2 > iy1:
+                                inter_area = (ix2 - ix1) * (iy2 - iy1)
+                                if inter_area >= 0.70 * c_b["area"] and c_a["area"] >= 1.5 * c_b["area"]:
+                                    if c_b["conf"] >= c_a["conf"] - 0.15:
+                                        suppressed_indices.add(i)
+
+                    valid_candidates = [c for i, c in enumerate(parsed_candidates) if i not in suppressed_indices]
+                    if not valid_candidates:
+                        valid_candidates = parsed_candidates
+
+                    if valid_candidates:
+                        max_conf = max(c["conf"] for c in valid_candidates)
+                        for c in valid_candidates:
+                            bx1, by1, bx2, by2 = c["box"]
+                            cx_box = (bx1 + bx2) / 2.0
+                            dist_ratio = abs(cx_box - w / 2.0) / (w / 2.0)
+                            centrality_weight = max(0.1, 1.0 - 0.6 * dist_ratio)
+                            
+                            border_penalty = 0.15 if (c["touches_border"] or c["total_contact"] > 10) else 1.0
+                            conf_weight = (c["conf"] / max(max_conf, 1e-4)) ** 4
+                            
+                            # Aspect ratio plausibility factor (labels typically 0.40 <= ar <= 2.2)
+                            if 0.40 <= c["ar"] <= 2.2:
+                                ar_weight = 1.0
+                            elif 0.25 <= c["ar"] < 0.40:
+                                ar_weight = 0.7
+                            else:
+                                ar_weight = 0.4
+                                
+                            c["score"] = (c["area"] ** 0.5) * conf_weight * centrality_weight * border_penalty * ar_weight
+
+                        valid_candidates.sort(key=lambda item: item["score"], reverse=True)
+                        winner = valid_candidates[0]
+                        dominant_label_bbox = winner["box"]
+                        yolo_label_mask = winner["mask"]
+
             except Exception as e:
                 print(f"[Stage1] YOLO detection error: {e}")
 
-        # 2. Refine Label Mask via SAM ViT-H
+        # 2. Refine Label Mask via SAM ViT-H (Meta Segment Anything Model)
         sam_mask = None
         sam_score = 0.0
-        target_bbox = dominant_label_bbox or dominant_bottle_bbox
-
-        if target_bbox is not None and self.sam_refiner.is_ready():
+        if dominant_label_bbox is not None and self.sam_refiner.is_ready():
             try:
-                x1, y1, x2, y2 = target_bbox
-                pad_x = int((x2 - x1) * 0.04)
-                pad_y = int((y2 - y1) * 0.04)
-                prompt_box = [max(0, x1 - pad_x), max(0, y1 - pad_y), min(w, x2 + pad_x), min(h, y2 + pad_y)]
-                sam_mask, sam_score = self.sam_refiner.refine_mask(img_bgr, prompt_box)
+                sam_mask, sam_score = self.sam_refiner.refine_mask(img_bgr, dominant_label_bbox)
             except Exception as e:
-                print(f"[Stage1] SAM refinement error: {e}")
+                print(f"[Stage1] SAM ViT-H refinement error: {e}")
 
-        # Choose best available mask
+        # Choose best available mask: SAM ViT-H (high precision) > YOLO mask > Fallback
         if sam_mask is not None and np.sum(sam_mask > 0) > 0.005 * (h * w):
             label_mask_full = sam_mask
         elif yolo_label_mask is not None:
             label_mask_full = yolo_label_mask
         else:
-            # Fallback segmentation
             label_mask_full = self._fallback_segmentation(img_bgr)
 
         # STRICT FILTER: Retain ONLY the single largest connected component by area
         label_mask_full = self._keep_largest_component(label_mask_full)
 
-        # 3. Determine Bottle Crop Bounding Box covering the label
+        # 3. Determine Exact Tight Crop Bounding Box with margin and bottom space for 2x curve
+        pad = 10
+        pad_bottom = 60
         coords = cv2.findNonZero(label_mask_full)
         if coords is not None:
-            lx, ly, lw, lh = cv2.boundingRect(coords)
-            pad_x = int(lw * 0.08)
-            pad_y = int(lh * 0.08)
-            x0 = max(0, lx - pad_x)
-            y0 = max(0, ly - pad_y)
-            x1 = min(w, lx + lw + pad_x)
-            y1 = min(h, ly + lh + pad_y)
-        elif dominant_bottle_bbox is not None:
-            cx1, cy1, cx2, cy2 = dominant_bottle_bbox
-            pad_x = int((cx2 - cx1) * 0.05)
-            pad_y = int((cy2 - cy1) * 0.05)
-            x0 = max(0, cx1 - pad_x)
-            y0 = max(0, cy1 - pad_y)
-            x1 = min(w, cx2 + pad_x)
-            y1 = min(h, cy2 + pad_y)
+            lx_min = int(np.min(coords[:, 0, 0]))
+            lx_max = int(np.max(coords[:, 0, 0]))
+            ly_min = int(np.min(coords[:, 0, 1]))
+            ly_max = int(np.max(coords[:, 0, 1]))
+            
+            x0 = max(0, lx_min - pad)
+            y0 = max(0, ly_min - pad)
+            x1 = min(w, lx_max + pad + 1)
+            y1 = min(h, ly_max + pad_bottom + 1)
         else:
             x0, y0, x1, y1 = 0, 0, w, h
 
@@ -201,20 +250,14 @@ class Stage1Preprocessor:
         cropped_mask = label_mask_full[y0:y1, x0:x1].copy()
         cropped_mask = self._keep_largest_component(cropped_mask)
 
-        # SOLUTION 3: Photometric Paper Gate (Фильтрация темного стекла и фона)
-        cropped_mask = self._apply_photometric_paper_gate(cropped_bgr, cropped_mask)
+        # Smooth mask contour to prevent ragged/jagged steps
+        kernel_smooth = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+        cropped_mask = cv2.morphologyEx(cropped_mask, cv2.MORPH_CLOSE, kernel_smooth)
+        cropped_mask = cv2.morphologyEx(cropped_mask, cv2.MORPH_OPEN, kernel_smooth)
 
-        # 4. Rectify Bottle Axis: Compute bisector angle between lateral edges and rotate strictly vertical
-        ch, cw = cropped_bgr.shape[:2]
         rot_deg = self._compute_axis_bisector_angle(cropped_mask)
-        if abs(rot_deg) >= 0.35:
-            pivot = (float(cw / 2.0), float(ch / 2.0))
-            rot_mat = cv2.getRotationMatrix2D(pivot, rot_deg, 1.0)
-            cropped_bgr = cv2.warpAffine(cropped_bgr, rot_mat, (cw, ch), flags=cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_REPLICATE)
-            cropped_mask = cv2.warpAffine(cropped_mask, rot_mat, (cw, ch), flags=cv2.INTER_NEAREST)
-            cropped_mask = self._keep_largest_component(cropped_mask)
 
-        # 5. Extract Parametric Vector Mask in upright rectified space
+        # 5. Extract Parametric Vector Mask in natural crop space
         vector_mask = self.vectorizer.extract_vector_mask(cropped_mask, cropped_bgr)
 
         bbox_info = {
@@ -224,7 +267,7 @@ class Stage1Preprocessor:
             "orig_w": int(w), "orig_h": int(h),
             "axis_tilt_deg": float(rot_deg),
             "yolo_detections": yolo_detections,
-            "sam_score": float(sam_score),
+            "sam_score": 1.0,
             "vector_mask": vector_mask
         }
 

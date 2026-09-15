@@ -214,6 +214,37 @@
             </button>
           </div>
 
+          <!-- Dual Verification Statistics & Capture Selector -->
+          <div class="dual-ocr-stats-box" id="dual-ocr-stats" style="background: #F7FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <span style="font-size: 13px; font-weight: 600; color: #2D3748;">📊 Отбор захвата (До vs После развертки):</span>
+              <span class="badge-accent" id="ocr-selection-badge" style="font-size: 12px; padding: 3px 8px; border-radius: 6px;">Автоотбор</span>
+            </div>
+
+            <!-- Stats Mini Grid -->
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; text-align: center;">
+              <div style="background: #FFF; padding: 8px; border-radius: 8px; border: 1px solid #EDF2F7;">
+                <div style="font-size: 11px; color: #718096;">До развертки</div>
+                <div id="stat-raw-words" style="font-size: 16px; font-weight: bold; color: #4A5568;">-</div>
+              </div>
+              <div style="background: #FFF; padding: 8px; border-radius: 8px; border: 1px solid #EDF2F7;">
+                <div style="font-size: 11px; color: #718096;">После 3D развертки</div>
+                <div id="stat-dew-words" style="font-size: 16px; font-weight: bold; color: #2B6CB0;">-</div>
+              </div>
+              <div style="background: #FFF; padding: 8px; border-radius: 8px; border: 1px solid #EDF2F7;">
+                <div style="font-size: 11px; color: #718096;">Прирост / Дельта</div>
+                <div id="stat-gain-words" style="font-size: 16px; font-weight: bold; color: #38A169;">-</div>
+              </div>
+            </div>
+
+            <!-- Interactive Source Switcher -->
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <button class="pill-btn active" id="btn-source-auto" style="flex: 1; font-size: 12px; padding: 6px 10px;">★ Автоотбор</button>
+              <button class="pill-btn" id="btn-source-dewarped" style="flex: 1; font-size: 12px; padding: 6px 10px;">Выпрямленный скан</button>
+              <button class="pill-btn" id="btn-source-raw" style="flex: 1; font-size: 12px; padding: 6px 10px;">Исходный снимок</button>
+            </div>
+          </div>
+
           <!-- Full Text Box -->
           <div class="ocr-text-box" id="ocr-full-text">
             Ожидание обработки...
@@ -223,6 +254,15 @@
           <div class="codes-box hidden" id="codes-container">
             <h4 class="mini-title">Штрих-коды и QR</h4>
             <div id="codes-list"></div>
+          </div>
+
+          <!-- Wine Lexicon Auto-Corrections -->
+          <div class="corrections-box hidden" id="corrections-container" style="margin-top: 14px; margin-bottom: 14px; background: #F0FFF4; border: 1px solid #9AE6B4; border-radius: 12px; padding: 12px 16px;">
+            <h4 class="mini-title" style="color: #22543D; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22543D" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              Винный словарь: Автоматические исправления (Wine Lexicon)
+            </h4>
+            <div id="corrections-list" style="display: flex; flex-direction: column; gap: 6px;"></div>
           </div>
 
           <!-- Structured Word Tokens -->

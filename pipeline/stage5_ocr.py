@@ -27,12 +27,16 @@ class Stage5OCRDecoder:
         except Exception:
             self.barcode_detector = None
 
+        # 3. Domain-Specific Wine Lexicon & Post-OCR Corrector
+        from .wine_lexicon_corrector import WineVocabularyCorrector
+        self.lexicon_corrector = WineVocabularyCorrector()
+
     def _init_engines(self):
-        # 1. Initialize RapidOCR (PP-OCRv4 ONNX)
+        # 1. Initialize RapidOCR (PP-OCRv4 ONNX) with generous unclip ratio to capture outer digits (e.g. 2022)
         try:
             from rapidocr_onnxruntime import RapidOCR
-            self.rapid_ocr = RapidOCR()
-            print("[Stage5] RapidOCR (PP-OCRv4) ready.")
+            self.rapid_ocr = RapidOCR(det_unclip_ratio=1.9, det_db_box_thresh=0.38)
+            print("[Stage5] RapidOCR (PP-OCRv4, unclip=1.9) ready.")
         except Exception as e:
             print(f"[Stage5] RapidOCR init error: {e}")
             self.rapid_ocr = None
@@ -58,7 +62,7 @@ class Stage5OCRDecoder:
 
         h, w = img_bgr.shape[:2]
         
-        # 1. Super-Resolution Scaling & CLAHE Contrast Boosting
+        # 1. Super-Resolution Scaling & CLAHE Contrast Boosting + Unsharp Mask
         scale = 1.5 if max(h, w) < 1200 else 1.0
         if scale > 1.0:
             img_proc = cv2.resize(img_bgr, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LANCZOS4)
@@ -68,9 +72,13 @@ class Stage5OCRDecoder:
         # CLAHE Contrast Boost on Luminance
         lab = cv2.cvtColor(img_proc, cv2.COLOR_BGR2LAB)
         l_chan, a_chan, b_chan = cv2.split(lab)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        clahe = cv2.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8))
         l_enh = clahe.apply(l_chan)
         img_enh = cv2.cvtColor(cv2.merge([l_enh, a_chan, b_chan]), cv2.COLOR_LAB2BGR)
+
+        # Unsharp Mask Sharpening for embossed gold/foil digits and serif lettering
+        gaussian = cv2.GaussianBlur(img_enh, (0, 0), 2.0)
+        img_enh = cv2.addWeighted(img_enh, 1.4, gaussian, -0.4, 0)
 
         text_blocks = []
 
@@ -94,42 +102,27 @@ class Stage5OCRDecoder:
             except Exception as e:
                 print(f"[Stage5] RapidOCR reading error: {e}")
 
-        # 3. Targeted Cyrillic Verification & Augmentation via EasyOCR (ru)
-        if self.easy_ru is not None:
+        # 3. Targeted Cyrillic Augmentation via EasyOCR only if RapidOCR found few tokens
+        if len(text_blocks) < 2 and self.easy_ru is not None:
             try:
                 cyrillic_chars = set("абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ")
                 easy_ru_results = self.easy_ru.readtext(cv2.cvtColor(img_enh, cv2.COLOR_BGR2RGB))
                 for bbox, text, conf in easy_ru_results:
                     clean_text = text.strip()
                     has_cyr = sum(c in cyrillic_chars for c in clean_text) >= 2
-                    if has_cyr and float(conf) > 0.60:
+                    if has_cyr and float(conf) > 0.50:
                         pts = np.array(bbox, dtype=np.float64) / scale
                         x_min, y_min = np.min(pts, axis=0)
                         x_max, y_max = np.max(pts, axis=0)
                         
-                        # Match with existing text blocks
-                        matched = False
-                        for b in text_blocks:
-                            bx, by, bw, bh = b["rect"]["x"], b["rect"]["y"], b["rect"]["w"], b["rect"]["h"]
-                            ix1, iy1 = max(x_min, bx), max(y_min, by)
-                            ix2, iy2 = min(x_max, bx + bw), min(y_max, by + bh)
-                            if ix2 > ix1 and iy2 > iy1:
-                                inter_area = (ix2 - ix1) * (iy2 - iy1)
-                                union_area = (x_max - x_min) * (y_max - y_min) + bw * bh - inter_area
-                                if inter_area / max(union_area, 1.0) > 0.3:
-                                    b["text"] = clean_text
-                                    b["confidence"] = max(b["confidence"], round(float(conf), 3))
-                                    matched = True
-                                    break
-                        if not matched:
-                            text_blocks.append({
-                                "text": clean_text,
-                                "confidence": round(float(conf), 3),
-                                "bbox": [[int(p[0]), int(p[1])] for p in pts],
-                                "rect": {"x": int(x_min), "y": int(y_min), "w": int(x_max - x_min), "h": int(y_max - y_min)}
-                            })
+                        text_blocks.append({
+                            "text": clean_text,
+                            "confidence": round(float(conf), 3),
+                            "bbox": [[int(p[0]), int(p[1])] for p in pts],
+                            "rect": {"x": int(x_min), "y": int(y_min), "w": int(x_max - x_min), "h": int(y_max - y_min)}
+                        })
             except Exception as e:
-                print(f"[Stage5] EasyOCR ru verification error: {e}")
+                print(f"[Stage5] EasyOCR ru fallback error: {e}")
 
         # Sort top to bottom, then left to right
         text_blocks.sort(key=lambda b: (b["rect"]["y"], b["rect"]["x"]))
@@ -213,17 +206,36 @@ class Stage5OCRDecoder:
         return annotated
 
     def process(self, dewarped_bgr: np.ndarray) -> dict:
-        """Full Stage 5 execution"""
+        """Full Stage 5 execution with domain wine dictionary auto-correction"""
         text_blocks = self.extract_text(dewarped_bgr)
         codes = self.decode_graphical_codes(dewarped_bgr)
-        annotated_bgr = self.draw_ocr_annotations(dewarped_bgr, text_blocks, codes)
+        
+        # Apply Domain Wine Lexicon Auto-Correction to every block
+        all_corrections = []
+        for tb in text_blocks:
+            raw_t = tb["text"]
+            corr_t, fixes = self.lexicon_corrector.correct_text(raw_t)
+            if corr_t != raw_t:
+                tb["raw_ocr_text"] = raw_t
+                tb["text"] = corr_t
+                tb["confidence"] = max(tb["confidence"], 0.95)  # Boost confidence on lexicon match
+                all_corrections.extend(fixes)
 
+        annotated_bgr = self.draw_ocr_annotations(dewarped_bgr, text_blocks, codes)
         full_text = " ".join([b["text"] for b in text_blocks])
+
+        # Global phrase-level pass on full text
+        full_text_corr, global_fixes = self.lexicon_corrector.correct_text(full_text)
+        if full_text_corr != full_text:
+            full_text = full_text_corr
+            all_corrections.extend(global_fixes)
 
         return {
             "text_blocks": text_blocks,
             "codes": codes,
             "full_text": full_text,
             "annotated_bgr": annotated_bgr,
-            "num_words": len(text_blocks)
+            "num_words": len(text_blocks),
+            "lexicon_corrections": all_corrections
         }
+

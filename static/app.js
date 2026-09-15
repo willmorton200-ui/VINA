@@ -315,16 +315,121 @@ document.addEventListener("DOMContentLoaded", () => {
     // Reset split slider to 50%
     setSplitPosition(50);
 
-    // 2. OCR Text & Tokens
-    ocrFullText.textContent = data.full_text || "Текст не обнаружен";
+    // 2. Dual Verification Statistics & Capture Selection
+    const comp = data.comparison || {};
+    const rawComp = comp.raw || {};
+    const dewComp = comp.dewarped || {};
     
-    tokensFlow.innerHTML = "";
-    (data.text_blocks || []).forEach(tb => {
-      const pill = document.createElement("div");
-      pill.className = "token-pill";
-      pill.innerHTML = `<span>${tb.text}</span><span class="token-conf">${Math.round(tb.confidence * 100)}%</span>`;
-      tokensFlow.appendChild(pill);
-    });
+    const statRawWords = document.getElementById("stat-raw-words");
+    const statDewWords = document.getElementById("stat-dew-words");
+    const statGainWords = document.getElementById("stat-gain-words");
+    const ocrSelectionBadge = document.getElementById("ocr-selection-badge");
+    
+    if (statRawWords) statRawWords.textContent = `${rawComp.num_words ?? (data.word_comparison?.raw_words ?? "-")} сл`;
+    if (statDewWords) statDewWords.textContent = `${dewComp.num_words ?? (data.word_comparison?.dewarped_words ?? "-")} сл`;
+    if (statGainWords) {
+      const gain = comp.gain ?? (data.word_comparison?.gain ?? 0);
+      if (gain > 0) {
+        statGainWords.textContent = `+${gain} сл (прирост)`;
+        statGainWords.style.color = "#38A169";
+      } else if (gain < 0) {
+        statGainWords.textContent = `${gain} сл (меньше)`;
+        statGainWords.style.color = "#E53E3E";
+      } else {
+        statGainWords.textContent = `0 (равно)`;
+        statGainWords.style.color = "#718096";
+      }
+    }
+
+    // Function to render text and tokens for selected capture mode
+    function applyCaptureView(mode) {
+      const btnAuto = document.getElementById("btn-source-auto");
+      const btnDew = document.getElementById("btn-source-dewarped");
+      const btnRaw = document.getElementById("btn-source-raw");
+
+      [btnAuto, btnDew, btnRaw].forEach(b => b && b.classList.remove("active"));
+
+      let textToDisplay = data.full_text || "";
+      let tokensToDisplay = data.text_blocks || [];
+      let annotatedSrc = art.annotated;
+
+      if (mode === "raw") {
+        if (btnRaw) btnRaw.classList.add("active");
+        textToDisplay = rawComp.full_text || data.full_text;
+        tokensToDisplay = rawComp.text_blocks || data.text_blocks;
+        annotatedSrc = rawComp.annotated || art.cropped;
+        if (ocrSelectionBadge) {
+          ocrSelectionBadge.textContent = "Исходный снимок (До развертки)";
+          ocrSelectionBadge.className = "badge-accent";
+        }
+      } else if (mode === "dewarped") {
+        if (btnDew) btnDew.classList.add("active");
+        textToDisplay = dewComp.full_text || data.full_text;
+        tokensToDisplay = dewComp.text_blocks || data.text_blocks;
+        annotatedSrc = dewComp.annotated || art.dewarped;
+        if (ocrSelectionBadge) {
+          ocrSelectionBadge.textContent = "Выпрямленный скан (Dewarped)";
+          ocrSelectionBadge.className = "badge-accent";
+        }
+      } else {
+        // Auto mode
+        if (btnAuto) btnAuto.classList.add("active");
+        const isDew = (comp.recommended === "dewarped") || ((comp.gain ?? 0) >= 0);
+        textToDisplay = isDew ? (dewComp.full_text || data.full_text) : (rawComp.full_text || data.full_text);
+        tokensToDisplay = isDew ? (dewComp.text_blocks || data.text_blocks) : (rawComp.text_blocks || data.text_blocks);
+        annotatedSrc = isDew ? (dewComp.annotated || art.dewarped) : (rawComp.annotated || art.cropped);
+        if (ocrSelectionBadge) {
+          ocrSelectionBadge.textContent = isDew ? "★ Автоотбор: Выпрямленный скан" : "★ Автоотбор: Исходный снимок";
+          ocrSelectionBadge.className = isDew ? "badge-success" : "badge-accent";
+        }
+      }
+
+      ocrFullText.textContent = textToDisplay || "Текст не обнаружен";
+      annotatedImg.src = annotatedSrc;
+
+      tokensFlow.innerHTML = "";
+      (tokensToDisplay || []).forEach(tb => {
+        const pill = document.createElement("div");
+        pill.className = "token-pill";
+        pill.innerHTML = `<span>${tb.text}</span><span class="token-conf">${Math.round(tb.confidence * 100)}%</span>`;
+        tokensFlow.appendChild(pill);
+      });
+    }
+
+    // Attach click listeners to source switcher buttons
+    const btnSourceAuto = document.getElementById("btn-source-auto");
+    const btnSourceDew = document.getElementById("btn-source-dewarped");
+    const btnSourceRaw = document.getElementById("btn-source-raw");
+
+    if (btnSourceAuto) btnSourceAuto.onclick = () => applyCaptureView("auto");
+    if (btnSourceDew) btnSourceDew.onclick = () => applyCaptureView("dewarped");
+    if (btnSourceRaw) btnSourceRaw.onclick = () => applyCaptureView("raw");
+
+    // Initialize default view
+    applyCaptureView("auto");
+    
+    // Wine Lexicon Corrections Display
+    const correctionsContainer = document.getElementById("corrections-container");
+    const correctionsList = document.getElementById("corrections-list");
+    const fixes = data.lexicon_corrections || [];
+    if (correctionsContainer && correctionsList) {
+      if (fixes.length > 0) {
+        correctionsContainer.classList.remove("hidden");
+        correctionsList.innerHTML = fixes.map(f => {
+          const simText = f.similarity ? ` (сходство ${Math.round(f.similarity * 100)}%)` : "";
+          return `
+            <div style="font-size: 13px; color: #2D3748; display: flex; align-items: center; gap: 8px; background: #FFFFFF; padding: 6px 12px; border-radius: 8px; border: 1px solid #C6F6D5;">
+              <span style="color: #C53030; text-decoration: line-through; font-family: monospace;">${f.before}</span>
+              <span style="color: #2B6CB0; font-weight: bold;">➔</span>
+              <span style="color: #22543D; font-weight: bold; font-family: monospace;">${f.after}</span>
+              <span style="font-size: 11px; color: #718096; margin-left: auto;">${simText || f.rule || "Словарь"}</span>
+            </div>
+          `;
+        }).join("");
+      } else {
+        correctionsContainer.classList.add("hidden");
+      }
+    }
 
     // 3. Barcodes / QR
     if (data.barcodes && data.barcodes.length > 0) {
