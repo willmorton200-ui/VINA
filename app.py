@@ -7,12 +7,15 @@ import glob
 import cv2
 import numpy as np
 import torch
+import time
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from pipeline.catalog import WineCatalog
+from pipeline.search_engine import WineSearchEngine
 from pipeline import CylindricalDewarpEngine, compute_image_metrics
 
 app = FastAPI(title="VINA Cylindrical Dewarping Studio", version="1.0.0")
@@ -30,6 +33,12 @@ app.add_middleware(
 gpu_available = torch.cuda.is_available()
 engine = CylindricalDewarpEngine(use_gpu=gpu_available)
 
+# Wine Catalog & Search Engine
+csv_file = r"D:\VINA\TZ\Датасет\Датасет\strapi_output0709.csv"
+uploads = r"D:\VINA\TZ\Датасет\Датасет\prod-svoe-vino-strapi\prod-svoe-vino\strapi\uploads"
+catalog = WineCatalog(csv_file, uploads)
+search_engine = WineSearchEngine(catalog, use_gpu=gpu_available)
+
 # Mount static folder
 app.mount("/static", StaticFiles(directory="d:/VINA/static"), name="static")
 app.mount("/test_dataset", StaticFiles(directory="d:/VINA/test_dataset"), name="test_dataset")
@@ -37,6 +46,11 @@ app.mount("/test_dataset", StaticFiles(directory="d:/VINA/test_dataset"), name="
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
     with open("d:/VINA/static/index.html", "r", encoding="utf-8") as f:
+        return f.read()
+
+@app.get("/scanner", response_class=HTMLResponse)
+async def serve_scanner():
+    with open("d:/VINA/static/scanner.html", "r", encoding="utf-8") as f:
         return f.read()
 
 @app.get("/api/health")
@@ -158,13 +172,57 @@ async def process_upload(file: UploadFile = File(...)):
     result["has_reference"] = False
     return result
 
+@app.post("/v1/eval/predict")
+async def eval_predict(image: UploadFile = File(...)):
+    """
+    Endpoint для скрипта оценки РСХБ.Цифра.
+    Принимает фото, возвращает {'slug': 'found-slug'}.
+    SLA < 3 sec.
+    """
+    t0 = time.time()
+    contents = await image.read()
+    nparr = np.frombuffer(contents, np.uint8)
+    img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    if img_bgr is None:
+        raise HTTPException(status_code=400, detail="Uploaded file is not a valid image")
+
+    # 1. Поиск по сырому изображению (очень быстро)
+    # 2. Если хотим максимум F1, можно сначала прогнать через engine (YOLO -> SAM -> Dewarp) и искать по кропу!
+    # Подсказка от кейсодержателя: "нормализация фото заметно улучшает F1"
+    
+    # Для начала попробуем искать прямо по оригинальному фото (так как SigLIP устойчив к шуму)
+    # Но для 90-100% мы применим YOLO crop
+    
+    # Пока просто ищем по оригинальному:
+    results = search_engine.search_by_cv2_image(img_bgr, top_k=1)
+    
+    if not results:
+        return {"slug": None}
+        
+    return {"slug": results[0]["slug"]}
+
+@app.get("/api/wine/{slug}")
+async def get_wine_card(slug: str):
+    wine = catalog.get_wine(slug)
+    if not wine:
+        raise HTTPException(status_code=404, detail="Wine not found")
+    return wine
+
+@app.get("/api/image/{slug}")
+async def get_wine_image(slug: str):
+    wine = catalog.get_wine(slug)
+    if not wine or not wine["image_path"]:
+        raise HTTPException(status_code=404, detail="Image not found")
+    return FileResponse(wine["image_path"])
+
 if __name__ == "__main__":
     import uvicorn
     import webbrowser
     import threading
 
     def _open_ui():
-        webbrowser.open("http://127.0.0.1:8000")
+        webbrowser.open("http://127.0.0.1:8080")
 
     threading.Timer(1.2, _open_ui).start()
-    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=False)
+    uvicorn.run("app:app", host="127.0.0.1", port=8080, reload=False)

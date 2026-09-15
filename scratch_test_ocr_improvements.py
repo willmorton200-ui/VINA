@@ -28,7 +28,9 @@ print("EasyOCR (en + 2x Sharp):", " ".join(res_sharp))
 
 print("\n=== 4. TEST PADDLEOCR IF INSTALLED ===")
 try:
-    from paddleocr import PaddleOCR
+    import importlib
+    paddleocr_module = importlib.import_module("paddleocr")
+    PaddleOCR = getattr(paddleocr_module, "PaddleOCR")
     ocr_paddle = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=True)
     res_paddle = ocr_paddle.ocr(img_bgr)
     paddle_texts = [line[1][0] for line in res_paddle[0]] if res_paddle and res_paddle[0] else []

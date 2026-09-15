@@ -14,3 +14,15 @@ roboflow_bottle_labels/
 roboflow_dataset/
 dataset_for_yolo/
 output_dataset/
+
+# Large dataset archives and raw image dumps
+*.zip
+*.rar
+*.7z
+*.tar.gz
+TZ/**/prod-svoe-vino-strapi/
+TZ/**/__MACOSX/
+__MACOSX/
+
+# Temporary debug visualizations
+scratch_debug/

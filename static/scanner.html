@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Своё Вино | Сканер</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/scanner.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M8 21h8M12 21v-8M12 13c-2.5 0-5-2-5-5V3h10v5c0 3-2.5 5-5 5z"/>
+                </svg>
+                <span>Своё Вино</span>
+            </div>
+        </header>
+
+        <!-- Scanner View -->
+        <main id="scanner-view" class="view active">
+            <div class="scanner-frame">
+                <div class="corners top-left"></div>
+                <div class="corners top-right"></div>
+                <div class="corners bottom-left"></div>
+                <div class="corners bottom-right"></div>
+                <p class="scan-instruction">Наведите камеру на этикетку<br>или загрузите фото</p>
+                <div class="scanning-line hidden"></div>
+            </div>
+            
+            <div class="controls">
+                <label class="btn btn-primary btn-upload">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                    </svg>
+                    Выбрать фото
+                    <input type="file" id="file-input" accept="image/*" hidden>
+                </label>
+            </div>
+        </main>
+
+        <!-- Loading View -->
+        <main id="loading-view" class="view">
+            <div class="spinner"></div>
+            <p>Анализ этикетки...</p>
+        </main>
+
+        <!-- Result View -->
+        <main id="result-view" class="view">
+            <button class="btn-back" id="btn-back">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M15 18l-6-6 6-6"/>
+                </svg>
+                Назад к сканеру
+            </button>
+            
+            <div class="wine-card">
+                <div class="wine-image-container">
+                    <img id="wine-image" src="" alt="Wine Image">
+                    <div class="rating-badge">★ 85+ Роскачество</div>
+                </div>
+                
+                <div class="wine-info">
+                    <p class="wine-winery" id="wine-winery"></p>
+                    <h2 class="wine-title" id="wine-title"></h2>
+                    
+                    <div class="tags">
+                        <span class="tag" id="wine-color"></span>
+                        <span class="tag" id="wine-category"></span>
+                        <span class="tag" id="wine-region"></span>
+                    </div>
+                    
+                    <div class="property">
+                        <span class="prop-label">Сорт:</span>
+                        <span class="prop-value" id="wine-grape"></span>
+                    </div>
+                    
+                    <p class="wine-description" id="wine-description"></p>
+                </div>
+            </div>
+
+            <!-- Sommelier Section (Retention) -->
+            <div class="sommelier-section">
+                <h3>Цифровой сомелье</h3>
+                <p>К чему вы подбираете это вино?</p>
+                <div class="pairing-options">
+                    <button class="btn-pairing">Мясо</button>
+                    <button class="btn-pairing">Рыба</button>
+                    <button class="btn-pairing">Сыры</button>
+                </div>
+                <button class="btn btn-secondary btn-full mt-10">Подобрать аналоги</button>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/scanner.js"></script>
+</body>
+</html>
