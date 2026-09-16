@@ -176,6 +176,25 @@ class Stage1Preprocessor:
                                     if c_b["conf"] >= c_a["conf"] - 0.15:
                                         suppressed_indices.add(i)
 
+                    # Partial horizontal sub-candidate suppression:
+                    # If Candidate A and Candidate B have high vertical overlap (>=80%), but Candidate B
+                    # is substantially wider (>=1.20x bw) and encompasses A (e.g. B includes the shaded flank and graphics),
+                    # suppress the partial highlight fragment A.
+                    for i, c_a in enumerate(parsed_candidates):
+                        if i in suppressed_indices:
+                            continue
+                        ay1, ay2 = c_a["box"][1], c_a["box"][3]
+                        for j, c_b in enumerate(parsed_candidates):
+                            if i == j or j in suppressed_indices:
+                                continue
+                            by1, by2 = c_b["box"][1], c_b["box"][3]
+                            iy1, iy2 = max(ay1, by1), min(ay2, by2)
+                            if iy2 > iy1:
+                                vert_overlap = (iy2 - iy1) / max(min(c_a["bh"], c_b["bh"]), 1)
+                                if vert_overlap >= 0.80:
+                                    if c_b["bw"] >= 1.20 * c_a["bw"] and c_b["area"] > c_a["area"] and c_b["conf"] >= c_a["conf"] - 0.15:
+                                        suppressed_indices.add(i)
+
                     valid_candidates = [c for i, c in enumerate(parsed_candidates) if i not in suppressed_indices]
                     if not valid_candidates:
                         valid_candidates = parsed_candidates
@@ -186,10 +205,12 @@ class Stage1Preprocessor:
                             bx1, by1, bx2, by2 = c["box"]
                             cx_box = (bx1 + bx2) / 2.0
                             dist_ratio = abs(cx_box - w / 2.0) / (w / 2.0)
-                            centrality_weight = max(0.1, 1.0 - 0.6 * dist_ratio)
+                            centrality_weight = max(0.2, 1.0 - 0.5 * dist_ratio)
                             
-                            border_penalty = 0.15 if (c["touches_border"] or c["total_contact"] > 10) else 1.0
-                            conf_weight = (c["conf"] / max(max_conf, 1e-4)) ** 4
+                            # Border penalty ONLY applies to thin border slivers (not genuine large labels)
+                            is_thin_sliver = (c["bw"] < 0.22 * w) and (c["touches_border"] or c["total_contact"] > 25)
+                            border_penalty = 0.20 if is_thin_sliver else 1.0
+                            conf_weight = (c["conf"] / max(max_conf, 1e-4)) ** 2
                             
                             # Aspect ratio plausibility factor (labels typically 0.40 <= ar <= 2.2)
                             if 0.40 <= c["ar"] <= 2.2:
@@ -218,8 +239,10 @@ class Stage1Preprocessor:
             except Exception as e:
                 print(f"[Stage1] SAM ViT-H refinement error: {e}")
 
-        # Choose best available mask: SAM ViT-H (high precision) > YOLO mask > Fallback
-        if sam_mask is not None and np.sum(sam_mask > 0) > 0.005 * (h * w):
+        # Choose best available mask: Fusion of SAM ViT-H (crisp contours) + YOLO mask (global coverage across shadows)
+        if sam_mask is not None and yolo_label_mask is not None and np.sum(sam_mask > 0) > 0.005 * (h * w):
+            label_mask_full = cv2.bitwise_or(sam_mask, yolo_label_mask)
+        elif sam_mask is not None and np.sum(sam_mask > 0) > 0.005 * (h * w):
             label_mask_full = sam_mask
         elif yolo_label_mask is not None:
             label_mask_full = yolo_label_mask
@@ -228,6 +251,13 @@ class Stage1Preprocessor:
 
         # STRICT FILTER: Retain ONLY the single largest connected component by area
         label_mask_full = self._keep_largest_component(label_mask_full)
+
+        # Solid paper texture: fill horizontal scanlines so dark text, letters and shadows don't create holes
+        label_mask_full = self._fill_horizontal_scanlines(label_mask_full)
+
+        # Morphological closing to seal boundary notches
+        kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (11, 11))
+        label_mask_full = cv2.morphologyEx(label_mask_full, cv2.MORPH_CLOSE, kernel_close)
 
         # 3. Determine Exact Tight Crop Bounding Box with margin and bottom space for 2x curve
         pad = 10
@@ -321,6 +351,24 @@ class Stage1Preprocessor:
         clean_mask = np.zeros_like(mask)
         clean_mask[labels == largest_label] = 255
         return clean_mask
+
+    def _fill_horizontal_scanlines(self, mask: np.ndarray) -> np.ndarray:
+        """
+        Fills horizontal gaps/holes along scanlines. Since a wine label is a continuous
+        solid paper sticker on a cylinder, any internal gaps (from dark lettering,
+        ornate print, or shadow gradients) are solid label paper texture.
+        """
+        if mask is None or np.sum(mask > 127) == 0:
+            return mask
+        filled = mask.copy()
+        y_indices, x_indices = np.where(filled > 127)
+        if len(y_indices) == 0:
+            return mask
+        for y in np.unique(y_indices):
+            xs = np.where(filled[y, :] > 127)[0]
+            if len(xs) > 1:
+                filled[y, xs[0]:xs[-1] + 1] = 255
+        return filled
 
     def _fallback_segmentation(self, img_bgr: np.ndarray) -> np.ndarray:
         """Saliency & GrabCut based fallback foreground isolation"""

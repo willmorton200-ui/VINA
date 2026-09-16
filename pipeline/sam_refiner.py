@@ -121,30 +121,17 @@ class SAMRefiner:
         center_L = float(np.median(center_patch)) if center_patch.size > 0 else 128.0
 
         # Anchor candidates: Center is always positive (label)
-        pts_list = [[cx_local, cy_local]]
-        labels_list = [1]
-
-        margin_x = int(bw * 0.06)
-        margin_y = int(bh * 0.06)
-        corner_pts = [
-            (bx1 - roi_x1 + margin_x, by1 - roi_y1 + margin_y),
-            (bx2 - roi_x1 - margin_x, by1 - roi_y1 + margin_y),
-            (bx1 - roi_x1 + margin_x, by2 - roi_y1 - margin_y),
-            (bx2 - roi_x1 - margin_x, by2 - roi_y1 - margin_y),
+        cx_local = (bx1 + bx2) // 2 - roi_x1
+        cy_local = (by1 + by2) // 2 - roi_y1
+        
+        # Positive helper points across label body to guarantee full cylindrical coverage:
+        # Left core (30%), Center (50%), Right core (70%)
+        pts_list = [
+            [cx_local, cy_local],
+            [bx1 - roi_x1 + int(bw * 0.30), cy_local],
+            [bx1 - roi_x1 + int(bw * 0.70), cy_local],
         ]
-
-        for px, py in corner_pts:
-            px_c = int(np.clip(px, 0, roi_bgr.shape[1] - 1))
-            py_c = int(np.clip(py, 0, roi_bgr.shape[0] - 1))
-            pt_L = float(l_channel[py_c, px_c])
-            # If corner is significantly darker than center paper (e.g. dark wine/shelf glass),
-            # mark it as negative prompt (0) to prevent SAM from spilling into bottle base/shoulders!
-            if pt_L < center_L - 35.0 and pt_L < 90.0:
-                pts_list.append([px, py])
-                labels_list.append(0)
-            else:
-                pts_list.append([px, py])
-                labels_list.append(1)
+        labels_list = [1, 1, 1]
 
         pts_local = np.array(pts_list, dtype=np.float32)
         labels_local = np.array(labels_list, dtype=np.int32)
@@ -165,17 +152,16 @@ class SAMRefiner:
                 )
                 labels_tensor = torch.tensor(labels_local[None, :], device=self.device)
 
+                # Predict single best whole-label mask for the bounding box
                 masks, scores, _ = self.predictor.predict_torch(
                     point_coords=transformed_pts,
                     point_labels=labels_tensor,
                     boxes=transformed_boxes,
-                    multimask_output=True
+                    multimask_output=False
                 )
 
-        # Pick best scoring mask
-        best_mask_idx = torch.argmax(scores[0]).item()
-        local_mask = masks[0, best_mask_idx].cpu().numpy().astype(np.uint8) * 255
-        score = float(scores[0, best_mask_idx].cpu().numpy()) if scores is not None else 1.0
+        local_mask = masks[0, 0].cpu().numpy().astype(np.uint8) * 255
+        score = float(scores[0, 0].cpu().numpy()) if scores is not None else 1.0
 
         # Paste back into full image mask
         full_mask = np.zeros((h, w), dtype=np.uint8)
