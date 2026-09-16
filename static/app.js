@@ -89,13 +89,36 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem("vina_hidden_samples", JSON.stringify(arr));
   }
 
+  // --- API Configuration & Bridge Support ---
+  function getApiBase() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const apiParam = urlParams.get('api');
+    if (apiParam) {
+      const clean = apiParam.trim().replace(/\/+$/, '');
+      localStorage.setItem('vina_api_url', clean);
+      return clean;
+    }
+    const saved = localStorage.getItem('vina_api_url');
+    if (saved) return saved.trim().replace(/\/+$/, '');
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return '';
+    }
+    return '';
+  }
+
+  function apiUrl(path) {
+    const base = getApiBase();
+    if (!path.startsWith('/')) path = '/' + path;
+    return base ? `${base}${path}` : path;
+  }
+
   // 1. Initial Load: Check Health & Fetch Sample Bottles
   fetchHealth();
   fetchSamples();
 
   async function fetchHealth() {
     try {
-      const res = await fetch("/api/health");
+      const res = await fetch(apiUrl("/api/health"));
       const data = await res.json();
       const gpuEl = document.getElementById("gpu-status-text");
       if (data.gpu_name && data.gpu_name !== "None (CPU)") {
@@ -110,7 +133,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function fetchSamples() {
     try {
-      const res = await fetch("/api/samples");
+      const res = await fetch(apiUrl("/api/samples"));
       const data = await res.json();
       allLoadedSamples = data.samples || [];
       renderSamples(allLoadedSamples);
@@ -249,7 +272,7 @@ document.addEventListener("DOMContentLoaded", () => {
   async function processSampleBottle(filename) {
     showLoading(`Обработка образца: ${filename}`);
     try {
-      const res = await fetch("/api/process_sample", {
+      const res = await fetch(apiUrl("/api/process_sample"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sample_filename: filename })
@@ -269,7 +292,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await fetch("/api/process_upload", {
+      const res = await fetch(apiUrl("/api/process_upload"), {
         method: "POST",
         body: formData
       });

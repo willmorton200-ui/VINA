@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Своё Вино | Сканер</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/scanner.css">
+    <link rel="stylesheet" href="scanner.css">
 </head>
 <body>
     <div class="app-container">
@@ -16,6 +16,18 @@
                     <path d="M8 21h8M12 21v-8M12 13c-2.5 0-5-2-5-5V3h10v5c0 3-2.5 5-5 5z"/>
                 </svg>
                 <span>Своё Вино</span>
+            </div>
+            <div class="header-right">
+                <div class="server-status" id="server-status" title="Статус подключения к серверу">
+                    <span class="status-dot"></span>
+                    <span class="status-label" id="status-text">...</span>
+                </div>
+                <button class="btn-icon" id="btn-settings" title="Настройки подключения">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                </button>
             </div>
         </header>
 
@@ -44,7 +56,7 @@
         <!-- Loading View -->
         <main id="loading-view" class="view">
             <div class="spinner"></div>
-            <p>Анализ этикетки...</p>
+            <p id="loading-text">Анализ этикетки...</p>
         </main>
 
         <!-- Result View -->
@@ -93,8 +105,34 @@
                 <button class="btn btn-secondary btn-full mt-10">Подобрать аналоги</button>
             </div>
         </main>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="modal hidden">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Мост к моделям (RTX 3090)</h3>
+                    <button id="btn-close-modal" class="btn-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="settings-hint">
+                        Укажите адрес сервера (Cloudflare Tunnel), на котором работает инференс:
+                    </p>
+                    <div class="form-group">
+                        <label for="input-api-url">API Base URL:</label>
+                        <input type="url" id="input-api-url" placeholder="https://xxxx.trycloudflare.com">
+                        <small class="field-hint">Оставьте пустым для работы с локального хоста (127.0.0.1:8080)</small>
+                    </div>
+                    <div id="connection-feedback" class="feedback-box hidden"></div>
+                    <div class="modal-actions">
+                        <button id="btn-test-connection" class="btn btn-secondary">Проверить связь</button>
+                        <button id="btn-save-settings" class="btn btn-primary">Сохранить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <script src="/static/scanner.js"></script>
+    <script src="scanner.js"></script>
 </body>
 </html>
