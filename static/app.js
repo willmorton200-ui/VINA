@@ -98,11 +98,19 @@ document.addEventListener("DOMContentLoaded", () => {
       localStorage.setItem('vina_api_url', clean);
       return clean;
     }
-    const saved = localStorage.getItem('vina_api_url');
-    if (saved) return saved.trim().replace(/\/+$/, '');
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+
+    // Always prefer direct local connection if running locally
+    const isLocalHost = window.location.hostname === 'localhost' || 
+                        window.location.hostname === '127.0.0.1' || 
+                        window.location.hostname === '0.0.0.0' ||
+                        window.location.port === '8080' ||
+                        !window.location.hostname;
+    if (isLocalHost) {
       return '';
     }
+
+    const saved = localStorage.getItem('vina_api_url');
+    if (saved) return saved.trim().replace(/\/+$/, '');
     return '';
   }
 
@@ -700,12 +708,26 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!settingsModal) return;
     inputApiUrl.value = localStorage.getItem("vina_api_url") || "";
     if (connectionFeedback) connectionFeedback.style.display = "none";
+    settingsModal.style.display = "flex";
     settingsModal.classList.remove("hidden");
   }
 
   function closeSettings() {
     if (!settingsModal) return;
+    settingsModal.style.display = "none";
     settingsModal.classList.add("hidden");
+  }
+
+  const btnResetLocal = document.getElementById("btn-reset-local");
+  if (btnResetLocal) {
+    btnResetLocal.addEventListener("click", async () => {
+      localStorage.removeItem("vina_api_url");
+      inputApiUrl.value = "";
+      closeSettings();
+      await fetchHealth();
+      await fetchSamples();
+      showToast("Переключено на локальный сервер (127.0.0.1:8080)");
+    });
   }
 
   if (btnStudioSettings) btnStudioSettings.addEventListener("click", openSettings);
@@ -746,11 +768,6 @@ document.addEventListener("DOMContentLoaded", () => {
       await fetchSamples();
       showToast("Настройки подключения сохранены");
     });
-  }
-
-  // Auto prompt on remote if no API url is set
-  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !localStorage.getItem('vina_api_url')) {
-    setTimeout(openSettings, 600);
   }
 
 });

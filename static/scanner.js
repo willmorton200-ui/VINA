@@ -8,13 +8,20 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('vina_api_url', clean);
             return clean;
         }
+
+        // Always prefer direct local connection if running locally
+        const isLocalHost = window.location.hostname === 'localhost' || 
+                            window.location.hostname === '127.0.0.1' || 
+                            window.location.hostname === '0.0.0.0' ||
+                            window.location.port === '8080' ||
+                            !window.location.hostname;
+        if (isLocalHost) {
+            return '';
+        }
+
         const saved = localStorage.getItem('vina_api_url');
         if (saved) {
             return saved.trim().replace(/\/+$/, '');
-        }
-        // If local, default to current origin
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            return '';
         }
         return '';
     }
@@ -92,14 +99,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Run health check initially
     checkServerHealth();
 
-    // Auto-prompt settings if on remote (like Cloudflare Pages) without configured API
-    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !localStorage.getItem('vina_api_url')) {
-        setTimeout(() => {
-            openSettings();
-            showFeedback('Укажите HTTPS-ссылку туннеля к вашей RTX 3090 для подключения сканера.', 'error');
-        }, 800);
-    }
-
     // --- Settings Modal Handlers ---
     function openSettings() {
         inputApiUrl.value = localStorage.getItem('vina_api_url') || '';
@@ -119,6 +118,16 @@ document.addEventListener('DOMContentLoaded', () => {
     btnSettings.addEventListener('click', openSettings);
     btnCloseModal.addEventListener('click', closeSettings);
     modalBackdrop.addEventListener('click', closeSettings);
+
+    const btnResetLocal = document.getElementById('btn-reset-local');
+    if (btnResetLocal) {
+        btnResetLocal.addEventListener('click', async () => {
+            localStorage.removeItem('vina_api_url');
+            inputApiUrl.value = '';
+            closeSettings();
+            await checkServerHealth();
+        });
+    }
 
     btnTestConnection.addEventListener('click', async () => {
         const testUrl = inputApiUrl.value.trim();
