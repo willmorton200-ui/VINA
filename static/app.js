@@ -116,29 +116,72 @@ document.addEventListener("DOMContentLoaded", () => {
   fetchHealth();
   fetchSamples();
 
-  async function fetchHealth() {
+  async function fetchHealth(customUrl = null) {
+    const gpuEl = document.getElementById("gpu-status-text");
+    const targetUrl = customUrl !== null ? (customUrl ? `${customUrl.replace(/\/+$/, '')}/api/health` : '/api/health') : apiUrl("/api/health");
+
+    if (!getApiBase() && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      if (gpuEl) gpuEl.textContent = "Сервер не настроен • Офлайн";
+      return { ok: false };
+    }
+
     try {
-      const res = await fetch(apiUrl("/api/health"));
-      const data = await res.json();
-      const gpuEl = document.getElementById("gpu-status-text");
-      if (data.gpu_name && data.gpu_name !== "None (CPU)") {
-        gpuEl.textContent = `${data.gpu_name} • CUDA Active`;
-      } else {
-        gpuEl.textContent = "CPU Mode Active";
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch(targetUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      const contentType = res.headers.get("content-type") || "";
+      if (!res.ok || !contentType.includes("application/json")) {
+        throw new Error(`HTTP ${res.status}`);
       }
+
+      const data = await res.json();
+      if (gpuEl) {
+        if (data.gpu_name && data.gpu_name !== "None (CPU)") {
+          gpuEl.textContent = `${data.gpu_name} • Онлайн`;
+        } else {
+          gpuEl.textContent = "CPU Mode Active • Онлайн";
+        }
+      }
+      return { ok: true, data };
     } catch (e) {
-      console.warn("Health check error:", e);
+      if (gpuEl) gpuEl.textContent = "RTX 3090 • Офлайн";
+      return { ok: false, error: e.message };
     }
   }
 
   async function fetchSamples() {
+    if (!getApiBase() && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      samplesContainer.innerHTML = `
+        <div style="padding: 24px 16px; text-align: center; color: var(--apple-text-secondary); font-size: 13px;">
+          <p style="margin-bottom: 10px;">Сервер инференса (RTX 3090) не подключён к облаку.</p>
+          <button id="btn-open-settings-inline" style="cursor: pointer; padding: 6px 14px; background: #0071e3; color: #fff; border: none; border-radius: 20px; font-weight: 500; font-size: 12px;">⚙️ Подключить туннель</button>
+        </div>
+      `;
+      document.getElementById("btn-open-settings-inline")?.addEventListener("click", openSettings);
+      return;
+    }
+
     try {
       const res = await fetch(apiUrl("/api/samples"));
+      const contentType = res.headers.get("content-type") || "";
+      if (!res.ok || !contentType.includes("application/json")) {
+        throw new Error(`HTTP ${res.status}`);
+      }
       const data = await res.json();
       allLoadedSamples = data.samples || [];
       renderSamples(allLoadedSamples);
     } catch (e) {
-      samplesContainer.innerHTML = `<div class="error-msg">Ошибка загрузки образцов: ${e.message}</div>`;
+      samplesContainer.innerHTML = `
+        <div class="error-msg" style="padding: 16px; font-size: 13px;">
+          Сервер инференса недоступен (${e.message}). Проверьте туннель к RTX 3090.
+          <div style="margin-top: 8px;">
+            <button id="btn-retry-samples" style="cursor: pointer; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid #ccc; background: #fff;">Повторить попытку</button>
+          </div>
+        </div>
+      `;
+      document.getElementById("btn-retry-samples")?.addEventListener("click", fetchSamples);
     }
   }
 
@@ -643,4 +686,72 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 3000);
   }
 
+  // --- Settings Modal Handlers for Studio ---
+  const btnStudioSettings = document.getElementById("btn-studio-settings");
+  const settingsModal = document.getElementById("settings-modal");
+  const btnCloseModal = document.getElementById("btn-close-modal");
+  const modalBackdrop = document.getElementById("modal-backdrop");
+  const inputApiUrl = document.getElementById("input-api-url");
+  const btnTestConnection = document.getElementById("btn-test-connection");
+  const btnSaveSettings = document.getElementById("btn-save-settings");
+  const connectionFeedback = document.getElementById("connection-feedback");
+
+  function openSettings() {
+    if (!settingsModal) return;
+    inputApiUrl.value = localStorage.getItem("vina_api_url") || "";
+    if (connectionFeedback) connectionFeedback.style.display = "none";
+    settingsModal.classList.remove("hidden");
+  }
+
+  function closeSettings() {
+    if (!settingsModal) return;
+    settingsModal.classList.add("hidden");
+  }
+
+  if (btnStudioSettings) btnStudioSettings.addEventListener("click", openSettings);
+  if (btnCloseModal) btnCloseModal.addEventListener("click", closeSettings);
+  if (modalBackdrop) modalBackdrop.addEventListener("click", closeSettings);
+
+  if (btnTestConnection) {
+    btnTestConnection.addEventListener("click", async () => {
+      const url = inputApiUrl.value.trim();
+      connectionFeedback.style.display = "block";
+      connectionFeedback.style.background = "#fff3cd";
+      connectionFeedback.style.color = "#856404";
+      connectionFeedback.textContent = "Проверка связи с сервером...";
+
+      const res = await fetchHealth(url);
+      if (res.ok) {
+        connectionFeedback.style.background = "#d4edda";
+        connectionFeedback.style.color = "#155724";
+        connectionFeedback.textContent = `Успешно! Сервер доступен (${res.data.gpu_name || "OK"}).`;
+      } else {
+        connectionFeedback.style.background = "#f8d7da";
+        connectionFeedback.style.color = "#721c24";
+        connectionFeedback.textContent = "Не удалось подключиться. Проверьте запущен ли start_tunnel.bat на ПК.";
+      }
+    });
+  }
+
+  if (btnSaveSettings) {
+    btnSaveSettings.addEventListener("click", async () => {
+      const val = inputApiUrl.value.trim().replace(/\/+$/, "");
+      if (val) {
+        localStorage.setItem("vina_api_url", val);
+      } else {
+        localStorage.removeItem("vina_api_url");
+      }
+      closeSettings();
+      await fetchHealth();
+      await fetchSamples();
+      showToast("Настройки подключения сохранены");
+    });
+  }
+
+  // Auto prompt on remote if no API url is set
+  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !localStorage.getItem('vina_api_url')) {
+    setTimeout(openSettings, 600);
+  }
+
 });
+

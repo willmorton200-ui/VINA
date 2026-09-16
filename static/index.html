@@ -29,6 +29,12 @@
       </div>
 
       <div class="header-badges">
+        <a href="scanner.html" class="pill-badge" style="text-decoration: none; color: inherit;">
+          <span>📱 Мобильный сканер</span>
+        </a>
+        <button id="btn-studio-settings" class="pill-badge" style="cursor: pointer; border: 1px solid rgba(0,0,0,0.08); background: rgba(0,0,0,0.04);">
+          <span>⚙️ Мост к GPU</span>
+        </button>
         <div class="pill-badge gpu-badge">
           <span class="pulse-dot"></span>
           <span id="gpu-status-text">NVIDIA RTX 3090 • CUDA Active</span>
@@ -446,6 +452,30 @@
   <!-- Notification Toast -->
   <div class="toast-notification hidden" id="toast">
     <span id="toast-message">Текст скопирован</span>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal hidden" style="position:fixed;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;z-index:9999;">
+    <div class="modal-backdrop" id="modal-backdrop" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);"></div>
+    <div class="modal-content" style="position:relative;background:#fff;border-radius:16px;max-width:440px;width:90%;padding:24px;box-shadow:0 20px 40px rgba(0,0,0,0.25);z-index:10000;font-family:'Inter',-apple-system,sans-serif;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h3 style="margin:0;font-size:18px;color:#111;">Мост к серверу инференса (RTX 3090)</h3>
+        <button id="btn-close-modal" style="background:none;border:none;font-size:24px;cursor:pointer;color:#888;line-height:1;">&times;</button>
+      </div>
+      <p style="font-size:13px;color:#666;line-height:1.5;margin-bottom:16px;">
+        Для обработки фото в облаке запустите <code>start_tunnel.bat</code> на ПК и вставьте полученный HTTPS-адрес туннеля:
+      </p>
+      <div style="margin-bottom:16px;">
+        <label for="input-api-url" style="display:block;font-size:12px;font-weight:600;margin-bottom:6px;color:#333;">API Base URL:</label>
+        <input type="url" id="input-api-url" placeholder="https://xxxx.trycloudflare.com" style="width:100%;padding:10px 12px;border:1.5px solid #ccc;border-radius:8px;font-size:14px;box-sizing:border-box;outline:none;">
+        <small style="display:block;font-size:11px;color:#888;margin-top:4px;">Оставьте пустым при запуске локально (localhost:8080)</small>
+      </div>
+      <div id="connection-feedback" style="padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none;"></div>
+      <div style="display:flex;gap:10px;">
+        <button id="btn-test-connection" style="flex:1;padding:10px;border-radius:8px;border:1px solid #ddd;background:#f5f5f7;cursor:pointer;font-weight:500;font-size:13px;">Проверить связь</button>
+        <button id="btn-save-settings" style="flex:1;padding:10px;border-radius:8px;border:none;background:#0071e3;color:#fff;cursor:pointer;font-weight:600;font-size:13px;">Сохранить</button>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>
