@@ -230,7 +230,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
         </button>
-        <img class="sample-thumb" src="${sample.cam_url}" alt="${sample.title}" loading="lazy">
+        <img class="sample-thumb" src="${apiUrl(sample.cam_url)}" alt="${sample.title}" loading="lazy">
         <div class="sample-title">${sample.title}</div>
         <div class="sample-tag">${sample.has_catalog ? "✓ Эталон в базе" : "Камера"}</div>
       `;
