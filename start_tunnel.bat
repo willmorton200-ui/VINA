@@ -19,6 +19,6 @@ echo  Copy that URL and paste it in the web scanner (Settings icon).
 echo ======================================================================
 echo.
 
-.\bin\cloudflared.exe tunnel --url http://127.0.0.1:8080
+.\bin\cloudflared.exe tunnel --protocol http2 --url http://127.0.0.1:8080
 
 pause
