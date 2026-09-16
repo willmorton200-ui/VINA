@@ -18,6 +18,7 @@ echo  Look for the HTTPS link below (e.g., https://xxxx.trycloudflare.com):
 echo  Copy that URL and paste it in the web scanner (Settings icon).
 echo ======================================================================
 echo.
+taskkill /F /IM cloudflared.exe >nul 2>&1
 
 .\bin\cloudflared.exe tunnel --protocol http2 --url http://127.0.0.1:8080
 
