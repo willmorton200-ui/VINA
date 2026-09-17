@@ -1,5 +1,4 @@
 @echo off
-chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
 
@@ -9,33 +8,36 @@ echo ======================================================================
 echo           VINA Studio: Cylindrical Dewarp and Search System
 echo ======================================================================
 echo.
-echo [1/2] Проверка окружения Python...
-python --version
-if %ERRORLEVEL% NEQ 0 (
-    echo [ОШИБКА] Python не найден в переменной PATH!
-    pause
-    exit /b 1
-)
+
+rem Check if port 8080 is already active
 netstat -ano | findstr 127.0.0.1:8080 | findstr LISTENING >nul
 if %ERRORLEVEL% EQU 0 (
-    echo [ИНФО] Сервер VINA уже активен и слушает порт 8080!
-    echo       Открываем интерфейс в браузере: http://127.0.0.1:8080
+    echo [INFO] VINA server is already active on http://127.0.0.1:8080
+    echo Opening browser...
     start http://127.0.0.1:8080
     echo.
     pause
     exit /b 0
 )
 
+echo [1/2] Checking Python environment...
+python --version
+if %ERRORLEVEL% NEQ 0 (
+    echo [ERROR] Python was not found in PATH!
+    pause
+    exit /b 1
+)
+
 echo.
-echo [2/2] Загрузка нейросетей в видеопамять RTX 3090...
-echo       (YOLOv8-seg, SAM, PP-OCRv4, EasyOCR, SigLIP2, FAISS-каталог)
+echo [2/2] Loading neural networks into RTX 3090 VRAM...
+echo       YOLOv8-seg, SAM, PP-OCRv4, EasyOCR, SigLIP2, FAISS catalog
 echo.
-echo       Пожалуйста, подождите около 10-12 секунд.
-echo       Браузер (http://127.0.0.1:8080) откроется АВТОМАТИЧЕСКИ,
-echo       как только сервер будет полностью готов к работе!
+echo       Please wait 8-10 seconds.
+echo       The browser (http://127.0.0.1:8080) will open AUTOMATICALLY
+echo       as soon as the server is ready!
 echo.
 echo ======================================================================
-echo Для остановки сервера закройте это окно или нажмите Ctrl+C.
+echo To stop the server, press Ctrl+C or close this window.
 echo ======================================================================
 echo.
 
@@ -43,7 +45,6 @@ python -u app.py
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo [ERROR] Ошибка выполнения сервера.
+    echo [ERROR] Server terminated with error.
     pause
 )
-

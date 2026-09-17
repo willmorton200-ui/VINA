@@ -53,6 +53,26 @@ async def serve_scanner():
     with open("d:/VINA/static/scanner.html", "r", encoding="utf-8") as f:
         return f.read()
 
+@app.get("/style.css")
+async def get_style_css():
+    return FileResponse("d:/VINA/static/style.css", media_type="text/css")
+
+@app.get("/app.js")
+async def get_app_js():
+    return FileResponse("d:/VINA/static/app.js", media_type="application/javascript")
+
+@app.get("/scanner.css")
+async def get_scanner_css():
+    return FileResponse("d:/VINA/static/scanner.css", media_type="text/css")
+
+@app.get("/scanner.js")
+async def get_scanner_js():
+    return FileResponse("d:/VINA/static/scanner.js", media_type="application/javascript")
+
+@app.get("/scanner.html", response_class=HTMLResponse)
+async def get_scanner_html():
+    return FileResponse("d:/VINA/static/scanner.html", media_type="text/html")
+
 @app.get("/api/health")
 async def health_check():
     gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None (CPU)"
