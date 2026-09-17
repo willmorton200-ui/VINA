@@ -220,9 +220,18 @@ if __name__ == "__main__":
     import uvicorn
     import webbrowser
     import threading
+    import urllib.request
 
-    def _open_ui():
-        webbrowser.open("http://127.0.0.1:8080")
+    def _open_ui_when_ready():
+        for _ in range(120):
+            time.sleep(0.5)
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:8080/api/health", timeout=1) as resp:
+                    if resp.status == 200:
+                        webbrowser.open("http://127.0.0.1:8080")
+                        break
+            except Exception:
+                pass
 
-    threading.Timer(1.2, _open_ui).start()
-    uvicorn.run("app:app", host="127.0.0.1", port=8080, reload=False)
+    threading.Thread(target=_open_ui_when_ready, daemon=True).start()
+    uvicorn.run(app, host="127.0.0.1", port=8080)
