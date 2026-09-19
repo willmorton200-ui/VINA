@@ -34,20 +34,22 @@
         <!-- Scanner View -->
         <main id="scanner-view" class="view active">
             <div class="scanner-frame">
-                <div class="corners top-left"></div>
-                <div class="corners top-right"></div>
-                <div class="corners bottom-left"></div>
-                <div class="corners bottom-right"></div>
-                <p class="scan-instruction">Наведите камеру на этикетку<br>или загрузите фото</p>
-                <div class="scanning-line hidden"></div>
+                <video id="camera-feed" autoplay playsinline style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; display: none;"></video>
+                <div class="corners top-left" style="z-index: 10;"></div>
+                <div class="corners top-right" style="z-index: 10;"></div>
+                <div class="corners bottom-left" style="z-index: 10;"></div>
+                <div class="corners bottom-right" style="z-index: 10;"></div>
+                <p class="scan-instruction" style="z-index: 10;">Наведите камеру на этикетку<br>или загрузите фото</p>
+                <div class="scanning-line hidden" style="z-index: 10;"></div>
             </div>
             
-            <div class="controls">
-                <label class="btn btn-primary btn-upload">
+            <div class="controls" style="display: flex; gap: 15px; justify-content: center; align-items: center; padding-bottom: 20px;">
+                <button id="btn-snap" class="hidden" style="width: 64px; height: 64px; border-radius: 50%; background: #fff; border: 4px solid var(--primary); flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.3); cursor: pointer;" title="Сделать снимок"></button>
+                <label class="btn btn-primary btn-upload" id="label-upload" style="margin:0;">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
                     </svg>
-                    Выбрать фото
+                    <span>Выбрать фото</span>
                     <input type="file" id="file-input" accept="image/*" hidden>
                 </label>
             </div>

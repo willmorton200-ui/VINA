@@ -39,6 +39,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultView = document.getElementById('result-view');
     const btnBack = document.getElementById('btn-back');
     const scanningLine = document.querySelector('.scanning-line');
+    const cameraFeed = document.getElementById('camera-feed');
+    const btnSnap = document.getElementById('btn-snap');
+    const labelUpload = document.getElementById('label-upload');
     
     // Status & Settings Elements
     const statusDot = document.querySelector('.status-dot');
@@ -73,11 +76,45 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentUploadedImageURL = null;
 
     // --- Views Switcher ---
+    let cameraStream = null;
+
+    async function startCamera() {
+        if (!cameraFeed) return;
+        try {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" }
+                });
+                cameraFeed.srcObject = cameraStream;
+                cameraFeed.style.display = 'block';
+                if (btnSnap) btnSnap.classList.remove('hidden');
+            }
+        } catch (e) {
+            console.warn("Camera access denied or unavailable", e);
+        }
+    }
+
+    function stopCamera() {
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(t => t.stop());
+            cameraStream = null;
+        }
+        if (cameraFeed) cameraFeed.style.display = 'none';
+        if (btnSnap) btnSnap.classList.add('hidden');
+    }
+
     function showView(view) {
         [scannerView, loadingView, resultView, originalView].forEach(v => {
             if (v) v.classList.remove('active');
         });
         if (view) view.classList.add('active');
+
+        // Manage camera lifecycle
+        if (view === scannerView) {
+            startCamera();
+        } else {
+            stopCamera();
+        }
     }
 
     // --- Health Check & Status Monitor ---
@@ -164,10 +201,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- File Upload & Scan Logic ---
-    fileInput.addEventListener('change', async (e) => {
-        if (!e.target.files.length) return;
+    async function processImageFile(file) {
+        if (!file) return;
         
-        const file = e.target.files[0];
         if (currentUploadedImageURL) {
             URL.revokeObjectURL(currentUploadedImageURL);
         }
@@ -180,7 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             try {
                 const formData = new FormData();
-                formData.append('image', file);
+                formData.append('image', file, 'snapshot.jpg');
                 
                 const predictEndpoint = apiUrl('/v1/eval/predict');
                 const res = await fetch(predictEndpoint, {
@@ -204,10 +240,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 showView(scannerView);
             } finally {
                 scanningLine.classList.add('hidden');
-                fileInput.value = '';
+                if (fileInput) fileInput.value = '';
             }
         }, 1200);
-    });
+    }
+
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) processImageFile(e.target.files[0]);
+        });
+    }
+
+    if (btnSnap && cameraFeed) {
+        btnSnap.addEventListener('click', () => {
+            if (!cameraStream) return;
+            // Draw current video frame to canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = cameraFeed.videoWidth;
+            canvas.height = cameraFeed.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(cameraFeed, 0, 0, canvas.width, canvas.height);
+            
+            // Convert to Blob
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    const file = new File([blob], "snapshot.jpg", { type: "image/jpeg" });
+                    processImageFile(file);
+                }
+            }, 'image/jpeg', 0.9);
+        });
+    }
 
     // --- Load Wine Metadata & Image ---
     async function loadWineCard(slug) {
