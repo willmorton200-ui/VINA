@@ -62,6 +62,7 @@ class WineVocabularyCorrector:
             "ГАЙ КОДЗОР", "ЛЕФКАДИЯ", "СИКОРЫ", "УСАДЬБА ДИВНОМОРСКОЕ", "МЫСХАКО",
             "МОНАСТЫРСКАЯ ИЗБА", "МОНАСТЫРСКАЯ", "ИЗБА", "БАРАКИАНИ",
             "КРЕПОСТЬ САРКЕЛ", "КРЕПОСТЬ", "САРКЕЛ", "ЦИМЛЯНСКОЕ", "ЦИМЛЯНСКИЙ ЧЕРНЫЙ", "ЦИМЛЯНСКИЙ", "АУТЕНТИЧНЫЙ", "ЧЕРНЫЙ",
+            "КАНОНИЧЕСКИЕ ТРАДИЦИИ", "КАНОНИЧЕСКИЕ", "ТРАДИЦИИ",
             # Latin
             "ALMA VALLEY", "CHATEAU DE TALU", "MASSANDRA", "FANAGORIA", "ABRAU DURSO", "INKERMAN",
             "GAI KODZOR", "LEFKADIA", "SIKORY", "USADBA DIVNOMORSKOE", "MYSHAKO",
@@ -98,6 +99,8 @@ class WineVocabularyCorrector:
             (r"\b(CAPKEA|CAPKEI|CAPKEЛ)\b", "САРКЕЛ"),
             (r"\b(AyTEHT[A-ZА-Я0-9_]*|AYTEHT[A-ZА-Я0-9_]*|АУТЕНТИЧНЫИ)\b", "АУТЕНТИЧНЫЙ"),
             (r"\b(YEPHbIY|YEPHbIK|ЧЕРНЫИ)\b", "ЧЕРНЫЙ"),
+            (r"\b(GHHOHFYECHIE|GHHOHF[A-Z]*|KAHOH[A-ZА-Я0-9_]*|КАНОН[А-Я0-9_]*)\b", "КАНОНИЧЕСКИЕ"),
+            (r"\b(TPAANINN|TPAL[A-ZА-Я0-9_]*|ТРАДИЦ[А-Я0-9_]*)\b", "ТРАДИЦИИ"),
             (r"\b(MEPIO|MEPI0|MEPLO)\b", "МЕРЛО"),
             (r"\b(CYXOE|Cyxoe|CYX0E)\b", "СУХОЕ"),
             (r"\b(KPACHOE|Kpachoe|KPACN0E)\b", "КРАСНОЕ"),

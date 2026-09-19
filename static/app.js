@@ -460,6 +460,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
       ocrFullText.textContent = textToDisplay || "Текст не обнаружен";
       annotatedImg.src = annotatedSrc;
+      
+      // Update bottom diagnostics section for Stage 5
+      if (typeof stageImgAnnotatedDiag !== 'undefined' && stageImgAnnotatedDiag) {
+        stageImgAnnotatedDiag.src = annotatedSrc;
+      }
+      if (typeof ocrStatsTable !== 'undefined' && ocrStatsTable) {
+        ocrStatsTable.innerHTML = `
+          <div class="param-row"><span class="param-key">Всего слов / токенов:</span><span class="param-val">${(tokensToDisplay || []).length}</span></div>
+          <div class="param-row"><span class="param-key">Распознанные коды:</span><span class="param-val">${(data.barcodes || []).length}</span></div>
+          <div class="param-row"><span class="param-key">Средняя уверенность:</span><span class="param-val">${computeAvgConfidence(tokensToDisplay)}%</span></div>
+        `;
+      }
 
       tokensFlow.innerHTML = "";
       (tokensToDisplay || []).forEach(tb => {
@@ -562,7 +574,7 @@ document.addEventListener("DOMContentLoaded", () => {
     stageImgFeatures.src = art.features || "";
     stageImgMesh.src = art.mesh || "";
     stageImgDewarpDiag.src = art.dewarped || "";
-    stageImgAnnotatedDiag.src = art.annotated || "";
+    // stageImgAnnotatedDiag is updated via applyCaptureView
 
     // Camera params table
     const cam = data.cam_info || {};
@@ -584,11 +596,7 @@ document.addEventListener("DOMContentLoaded", () => {
     `;
 
     // OCR stats table
-    ocrStatsTable.innerHTML = `
-      <div class="param-row"><span class="param-key">Всего слов / токенов:</span><span class="param-val">${data.num_words || 0}</span></div>
-      <div class="param-row"><span class="param-key">Распознанные коды:</span><span class="param-val">${(data.barcodes || []).length}</span></div>
-      <div class="param-row"><span class="param-key">Средняя уверенность:</span><span class="param-val">${computeAvgConfidence(data.text_blocks)}%</span></div>
-    `;
+    // (Now updated via applyCaptureView above)
 
     // Scroll smoothly to results
     resultsSection.scrollIntoView({ behavior: "smooth" });
@@ -772,3 +780,129 @@ document.addEventListener("DOMContentLoaded", () => {
 
 });
 
+
+// ==========================================
+// Lightbox Zoom & Pan Logic
+// ==========================================
+document.addEventListener("DOMContentLoaded", () => {
+  const lightboxModal = document.getElementById("lightbox-modal");
+  const lightboxImg = document.getElementById("lightbox-img");
+  const lightboxCanvas = document.getElementById("lightbox-canvas");
+  const btnCloseLightbox = document.getElementById("btn-close-lightbox");
+  const btnZoomIn = document.getElementById("btn-zoom-in");
+  const btnZoomOut = document.getElementById("btn-zoom-out");
+  const btnZoomReset = document.getElementById("btn-zoom-reset");
+  const lightboxTitle = document.getElementById("lightbox-title");
+
+  let scale = 1;
+  let posX = 0;
+  let posY = 0;
+  let isDragging = false;
+  let startX, startY;
+
+  function updateTransform() {
+    lightboxImg.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+    btnZoomReset.textContent = Math.round(scale * 100) + "%";
+  }
+
+  function resetTransform() {
+    scale = 1;
+    posX = 0;
+    posY = 0;
+    updateTransform();
+  }
+
+  function openLightbox(src, title) {
+    if (!src || src === "") return;
+    lightboxImg.src = src;
+    lightboxTitle.textContent = title || "Просмотр изображения";
+    resetTransform();
+    lightboxModal.classList.remove("hidden");
+  }
+
+  function closeLightbox() {
+    lightboxModal.classList.add("hidden");
+    lightboxImg.src = "";
+  }
+
+  // Attach to images
+  const clickables = [
+    "img-original-src", "img-dewarped-src", 
+    "side-img-orig", "side-img-dewarped", 
+    "annotated-img", 
+    "stage-img-mask", "stage-img-retinex", "stage-img-sauvola", 
+    "stage-img-features", "stage-img-mesh", "stage-img-dewarp-diag", "stage-img-annotated-diag"
+  ];
+  
+  clickables.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.style.cursor = "zoom-in";
+      el.addEventListener("click", () => {
+        let title = "Просмотр";
+        if (el.alt) title = el.alt;
+        else if (el.previousElementSibling && el.previousElementSibling.tagName === "H4") {
+          title = el.previousElementSibling.textContent;
+        } else if (el.parentElement.querySelector('.image-tag')) {
+          title = el.parentElement.querySelector('.image-tag').textContent;
+        } else if (el.parentElement.previousElementSibling && el.parentElement.previousElementSibling.tagName === "H4") {
+          title = el.parentElement.previousElementSibling.textContent;
+        }
+        openLightbox(el.src, title);
+      });
+    }
+  });
+
+  // Controls
+  btnCloseLightbox.addEventListener("click", closeLightbox);
+  btnZoomReset.addEventListener("click", resetTransform);
+  
+  btnZoomIn.addEventListener("click", () => {
+    scale *= 1.2;
+    updateTransform();
+  });
+  
+  btnZoomOut.addEventListener("click", () => {
+    scale /= 1.2;
+    updateTransform();
+  });
+
+  // Mouse wheel zoom
+  lightboxCanvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const zoomFactor = 1.1;
+    if (e.deltaY < 0) {
+      scale *= zoomFactor;
+    } else {
+      scale /= zoomFactor;
+    }
+    updateTransform();
+  }, { passive: false });
+
+  // Pan logic
+  lightboxCanvas.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return; // Only left click
+    isDragging = true;
+    startX = e.clientX - posX;
+    startY = e.clientY - posY;
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (!isDragging) return;
+    posX = e.clientX - startX;
+    posY = e.clientY - startY;
+    updateTransform();
+  });
+
+  window.addEventListener("mouseup", () => {
+    isDragging = false;
+  });
+
+  // Keyboard
+  window.addEventListener("keydown", (e) => {
+    if (lightboxModal.classList.contains("hidden")) return;
+    if (e.key === "Escape") {
+      closeLightbox();
+    }
+  });
+});

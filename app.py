@@ -254,4 +254,4 @@ if __name__ == "__main__":
                 pass
 
     threading.Thread(target=_open_ui_when_ready, daemon=True).start()
-    uvicorn.run(app, host="127.0.0.1", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8080)

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 
@@ -476,6 +476,26 @@
         <button id="btn-save-settings" style="flex:1;padding:10px;border-radius:8px;border:none;background:#0071e3;color:#fff;cursor:pointer;font-weight:600;font-size:13px;">Сохранить</button>
       </div>
       <button id="btn-reset-local" style="width:100%;padding:8px;border-radius:8px;border:1px solid #e5e5ea;background:#fafafa;cursor:pointer;font-weight:500;font-size:12px;color:#555;">Сбросить на локальный (127.0.0.1:8080)</button>
+    </div>
+  </div>
+
+  <!-- Lightbox Modal -->
+  <div id="lightbox-modal" class="lightbox-modal hidden">
+    <div class="lightbox-toolbar">
+      <div class="lightbox-title" id="lightbox-title">Просмотр изображения</div>
+      <div class="lightbox-controls">
+        <button id="btn-zoom-out" title="Уменьшить (Scroll Down)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+        </button>
+        <button id="btn-zoom-reset" title="Сбросить масштаб">100%</button>
+        <button id="btn-zoom-in" title="Увеличить (Scroll Up)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+        </button>
+        <button id="btn-close-lightbox" title="Закрыть (Esc)">&times;</button>
+      </div>
+    </div>
+    <div class="lightbox-canvas" id="lightbox-canvas">
+      <img id="lightbox-img" src="" alt="Full Resolution Image" draggable="false">
     </div>
   </div>
 

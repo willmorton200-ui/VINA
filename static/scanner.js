@@ -222,4 +222,162 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.classList.add('selected');
         });
     });
+
+    // ==========================================
+    // Lightbox Zoom & Pan Logic (Scanner Result)
+    // ==========================================
+    const lightboxModal = document.getElementById("lightbox-modal");
+    const lightboxImg = document.getElementById("lightbox-img");
+    const lightboxCanvas = document.getElementById("lightbox-canvas");
+    const btnCloseLightbox = document.getElementById("btn-close-lightbox");
+    const btnZoomIn = document.getElementById("btn-zoom-in");
+    const btnZoomOut = document.getElementById("btn-zoom-out");
+    const btnZoomReset = document.getElementById("btn-zoom-reset");
+    const lightboxTitle = document.getElementById("lightbox-title");
+
+    let scale = 1;
+    let posX = 0;
+    let posY = 0;
+    let isDragging = false;
+    let startX, startY;
+
+    function updateTransform() {
+        lightboxImg.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+        btnZoomReset.textContent = Math.round(scale * 100) + "%";
+    }
+
+    function resetTransform() {
+        scale = 1;
+        posX = 0;
+        posY = 0;
+        updateTransform();
+    }
+
+    function openLightbox(src, title) {
+        if (!src || src === "") return;
+        lightboxImg.src = src;
+        lightboxTitle.textContent = title || "Просмотр скана";
+        resetTransform();
+        lightboxModal.classList.remove("hidden");
+    }
+
+    function closeLightbox() {
+        lightboxModal.classList.add("hidden");
+        lightboxImg.src = "";
+    }
+
+    // Attach to the result wine image
+    if (imgWine) {
+        imgWine.style.cursor = "zoom-in";
+        // Both click and touchend to ensure it triggers on mobile
+        const handleOpen = (e) => {
+            if (e.type === 'touchend') e.preventDefault(); // prevent double firing
+            openLightbox(imgWine.src, elTitle.textContent || "Этикетка вина");
+        };
+        imgWine.addEventListener("click", handleOpen);
+        imgWine.addEventListener("touchend", handleOpen);
+    }
+
+    // Controls
+    if(btnCloseLightbox) btnCloseLightbox.addEventListener("click", closeLightbox);
+    if(btnZoomReset) btnZoomReset.addEventListener("click", resetTransform);
+    
+    if(btnZoomIn) {
+        btnZoomIn.addEventListener("click", () => {
+            scale *= 1.3;
+            updateTransform();
+        });
+    }
+    
+    if(btnZoomOut) {
+        btnZoomOut.addEventListener("click", () => {
+            scale /= 1.3;
+            updateTransform();
+        });
+    }
+
+    // Mouse wheel zoom
+    if (lightboxCanvas) {
+        lightboxCanvas.addEventListener("wheel", (e) => {
+            e.preventDefault();
+            const zoomFactor = 1.1;
+            if (e.deltaY < 0) {
+                scale *= zoomFactor;
+            } else {
+                scale /= zoomFactor;
+            }
+            updateTransform();
+        }, { passive: false });
+
+        // Pan logic for desktop (mouse)
+        lightboxCanvas.addEventListener("mousedown", (e) => {
+            if (e.button !== 0) return; 
+            isDragging = true;
+            startX = e.clientX - posX;
+            startY = e.clientY - posY;
+        });
+
+        window.addEventListener("mousemove", (e) => {
+            if (!isDragging) return;
+            posX = e.clientX - startX;
+            posY = e.clientY - startY;
+            updateTransform();
+        });
+
+        window.addEventListener("mouseup", () => {
+            isDragging = false;
+        });
+
+        // Mobile touch logic (Pan + Pinch-to-Zoom)
+        let initialDistance = null;
+        let initialScale = 1;
+
+        lightboxCanvas.addEventListener("touchstart", (e) => {
+            if (e.touches.length === 1) {
+                isDragging = true;
+                startX = e.touches[0].clientX - posX;
+                startY = e.touches[0].clientY - posY;
+            } else if (e.touches.length === 2) {
+                isDragging = false;
+                const touch1 = e.touches[0];
+                const touch2 = e.touches[1];
+                initialDistance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
+                initialScale = scale;
+            }
+        });
+
+        window.addEventListener("touchmove", (e) => {
+            if (e.touches.length === 1 && isDragging) {
+                posX = e.touches[0].clientX - startX;
+                posY = e.touches[0].clientY - startY;
+                updateTransform();
+            } else if (e.touches.length === 2 && initialDistance) {
+                const touch1 = e.touches[0];
+                const touch2 = e.touches[1];
+                const currentDistance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
+                const zoomDelta = currentDistance / initialDistance;
+                scale = initialScale * zoomDelta;
+                updateTransform();
+            }
+        });
+
+        window.addEventListener("touchend", (e) => {
+            if (e.touches.length < 2) {
+                initialDistance = null;
+            }
+            if (e.touches.length === 0) {
+                isDragging = false;
+            }
+        });
+    }
+
+    // Keyboard
+    window.addEventListener("keydown", (e) => {
+        if (!lightboxModal.classList.contains("hidden")) {
+            if (e.key === "Escape") {
+                closeLightbox();
+            }
+        }
+    });
+
 });

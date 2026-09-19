@@ -239,11 +239,11 @@ class Stage1Preprocessor:
             except Exception as e:
                 print(f"[Stage1] SAM ViT-H refinement error: {e}")
 
-        # Choose best available mask: Fusion of SAM ViT-H (crisp contours) + YOLO mask (global coverage across shadows)
-        if sam_mask is not None and yolo_label_mask is not None and np.sum(sam_mask > 0) > 0.005 * (h * w):
-            label_mask_full = cv2.bitwise_or(sam_mask, yolo_label_mask)
-        elif sam_mask is not None and np.sum(sam_mask > 0) > 0.005 * (h * w):
+        # Choose best available mask: SAM ViT-H (crisp contours) is highly preferred over YOLO mask
+        used_sam = False
+        if sam_mask is not None and np.sum(sam_mask > 0) > 0.005 * (h * w):
             label_mask_full = sam_mask
+            used_sam = True
         elif yolo_label_mask is not None:
             label_mask_full = yolo_label_mask
         else:
@@ -252,6 +252,16 @@ class Stage1Preprocessor:
         # STRICT FILTER: Retain ONLY the single largest connected component by area
         label_mask_full = self._keep_largest_component(label_mask_full)
 
+        # Optional Photometric Gate to drop dark background glass
+        label_mask_full = self._apply_photometric_paper_gate(img_bgr, label_mask_full)
+
+        # Snap boundaries to sharp image edges using Guided Filter
+        # ТОЛЬКО для YOLO масок! SAM делает пиксельно-точную сегментацию,
+        # Guided Filter в тенях уничтожает верхнюю дугу маски.
+        if not used_sam:
+            label_mask_full = self._guided_filter_mask(img_bgr, label_mask_full)
+            label_mask_full = (label_mask_full > 127).astype(np.uint8) * 255
+
         # Solid paper texture: fill horizontal scanlines so dark text, letters and shadows don't create holes
         label_mask_full = self._fill_horizontal_scanlines(label_mask_full)
 
@@ -259,8 +269,9 @@ class Stage1Preprocessor:
         kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (11, 11))
         label_mask_full = cv2.morphologyEx(label_mask_full, cv2.MORPH_CLOSE, kernel_close)
 
-        # 3. Determine Exact Tight Crop Bounding Box with margin and bottom space for 2x curve
+        # 3. Determine Exact Tight Crop Bounding Box with margin and space for curves
         pad = 10
+        pad_top = 30
         pad_bottom = 60
         coords = cv2.findNonZero(label_mask_full)
         if coords is not None:
@@ -270,7 +281,7 @@ class Stage1Preprocessor:
             ly_max = int(np.max(coords[:, 0, 1]))
             
             x0 = max(0, lx_min - pad)
-            y0 = max(0, ly_min - pad)
+            y0 = max(0, ly_min - pad_top)
             x1 = min(w, lx_max + pad + 1)
             y1 = min(h, ly_max + pad_bottom + 1)
         else:
@@ -456,8 +467,10 @@ class Stage1Preprocessor:
         # Автоматический порог Оцу внутри маски
         otsu_thresh, _ = cv2.threshold(masked_pixels, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         
-        # Порог отсечения темного стекла: стекло обычно имеет L < 75-80, бумага L > 110
-        glass_cutoff = max(int(otsu_thresh * 0.65), 75)
+        # Строгий порог отсечения: удаляем только черное стекло/капсулы (L < 30-35),
+        # но ОБЯЗАТЕЛЬНО сохраняем густые тени на изогнутых краях светлой бумаги!
+        # Ограничиваем порог суровым максимумом 35, чтобы гарантированно не срезать тени.
+        glass_cutoff = min(max(int(otsu_thresh * 0.40), 20), 35)
         
         # Находим верхнюю и нижнюю границы маски
         y_indices, _ = np.where(mask > 127)
@@ -466,12 +479,13 @@ class Stage1Preprocessor:
         y_min, y_max = int(np.min(y_indices)), int(np.max(y_indices))
         H_mask = y_max - y_min
         
-        # Отсекаем темное стекло в верхней 35% зоне
+        # Отсекаем темное стекло и посторонние темные этикетки в верхней 35% и нижней 35% зоне
         clean_mask = mask.copy()
-        top_glass_zone = np.zeros((h, w), dtype=bool)
-        top_glass_zone[:int(y_min + H_mask * 0.35), :] = True
+        border_glass_zone = np.zeros((h, w), dtype=bool)
+        border_glass_zone[:int(y_min + H_mask * 0.35), :] = True
+        border_glass_zone[int(y_max - H_mask * 0.35):, :] = True
         
-        clean_mask[top_glass_zone & (l_channel < glass_cutoff)] = 0
+        clean_mask[border_glass_zone & (l_channel < glass_cutoff)] = 0
         
         # Оставляем только наибольшую связную компоненту (бумажную этикетку)
         clean_mask = self._keep_largest_component(clean_mask)
