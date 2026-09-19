@@ -61,11 +61,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const elRegion = document.getElementById('wine-region');
     const elGrape = document.getElementById('wine-grape');
     const elDesc = document.getElementById('wine-description');
+    const btnShowOriginal = document.getElementById('btn-show-original');
+
+    // Original View Elements
+    const originalView = document.getElementById('original-view');
+    const originalImg = document.getElementById('original-img');
+    const originalCanvas = document.getElementById('original-canvas');
+    const btnBackToResult = document.getElementById('btn-back-to-result');
+    const btnAddToDb = document.getElementById('btn-add-to-db');
+
+    let currentUploadedImageURL = null;
 
     // --- Views Switcher ---
     function showView(view) {
-        [scannerView, loadingView, resultView].forEach(v => v.classList.remove('active'));
-        view.classList.add('active');
+        [scannerView, loadingView, resultView, originalView].forEach(v => {
+            if (v) v.classList.remove('active');
+        });
+        if (view) view.classList.add('active');
     }
 
     // --- Health Check & Status Monitor ---
@@ -156,6 +168,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!e.target.files.length) return;
         
         const file = e.target.files[0];
+        if (currentUploadedImageURL) {
+            URL.revokeObjectURL(currentUploadedImageURL);
+        }
+        currentUploadedImageURL = URL.createObjectURL(file);
+        
         scanningLine.classList.remove('hidden');
         
         setTimeout(async () => {
@@ -215,6 +232,30 @@ document.addEventListener('DOMContentLoaded', () => {
         showView(scannerView);
     });
 
+    if (btnShowOriginal) {
+        btnShowOriginal.addEventListener('click', () => {
+            if (currentUploadedImageURL) {
+                originalImg.src = currentUploadedImageURL;
+                resetOriginalTransform();
+                showView(originalView);
+            } else {
+                alert("Исходное фото не найдено");
+            }
+        });
+    }
+
+    if (btnBackToResult) {
+        btnBackToResult.addEventListener('click', () => {
+            showView(resultView);
+        });
+    }
+
+    if (btnAddToDb) {
+        btnAddToDb.addEventListener('click', () => {
+            alert("Функция 'Добавить в базу' в разработке");
+        });
+    }
+
     // Pairing buttons
     document.querySelectorAll('.btn-pairing').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -222,6 +263,97 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.classList.add('selected');
         });
     });
+
+    // ==========================================
+    // Original Photo Zoom & Pan Logic
+    // ==========================================
+    let origScale = 1;
+    let origPosX = 0;
+    let origPosY = 0;
+    let origIsDragging = false;
+    let origStartX, origStartY;
+
+    function updateOriginalTransform() {
+        if (originalImg) originalImg.style.transform = `translate(${origPosX}px, ${origPosY}px) scale(${origScale})`;
+    }
+
+    function resetOriginalTransform() {
+        origScale = 1;
+        origPosX = 0;
+        origPosY = 0;
+        updateOriginalTransform();
+    }
+
+    if (originalCanvas) {
+        originalCanvas.addEventListener("wheel", (e) => {
+            e.preventDefault();
+            const zoomFactor = 1.1;
+            if (e.deltaY < 0) {
+                origScale *= zoomFactor;
+            } else {
+                origScale /= zoomFactor;
+            }
+            updateOriginalTransform();
+        }, { passive: false });
+
+        // Pan desktop
+        originalCanvas.addEventListener("mousedown", (e) => {
+            if (e.button !== 0) return; 
+            origIsDragging = true;
+            origStartX = e.clientX - origPosX;
+            origStartY = e.clientY - origPosY;
+        });
+
+        window.addEventListener("mousemove", (e) => {
+            if (!origIsDragging) return;
+            origPosX = e.clientX - origStartX;
+            origPosY = e.clientY - origStartY;
+            updateOriginalTransform();
+        });
+
+        window.addEventListener("mouseup", () => {
+            origIsDragging = false;
+        });
+
+        // Pan + Pinch mobile
+        let origInitDist = null;
+        let origInitScale = 1;
+
+        originalCanvas.addEventListener("touchstart", (e) => {
+            if (e.touches.length === 1) {
+                origIsDragging = true;
+                origStartX = e.touches[0].clientX - origPosX;
+                origStartY = e.touches[0].clientY - origPosY;
+            } else if (e.touches.length === 2) {
+                origIsDragging = false;
+                const t1 = e.touches[0];
+                const t2 = e.touches[1];
+                origInitDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                origInitScale = origScale;
+            }
+        });
+
+        window.addEventListener("touchmove", (e) => {
+            if (originalView && !originalView.classList.contains("active")) return;
+            
+            if (e.touches.length === 1 && origIsDragging) {
+                origPosX = e.touches[0].clientX - origStartX;
+                origPosY = e.touches[0].clientY - origStartY;
+                updateOriginalTransform();
+            } else if (e.touches.length === 2 && origInitDist) {
+                const t1 = e.touches[0];
+                const t2 = e.touches[1];
+                const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                origScale = origInitScale * (dist / origInitDist);
+                updateOriginalTransform();
+            }
+        });
+
+        window.addEventListener("touchend", (e) => {
+            if (e.touches.length < 2) origInitDist = null;
+            if (e.touches.length === 0) origIsDragging = false;
+        });
+    }
 
     // ==========================================
     // Lightbox Zoom & Pan Logic (Scanner Result)
