@@ -236,7 +236,6 @@ document.addEventListener('DOMContentLoaded', () => {
         btnShowOriginal.addEventListener('click', () => {
             if (currentUploadedImageURL) {
                 originalImg.src = currentUploadedImageURL;
-                resetOriginalTransform();
                 showView(originalView);
             } else {
                 alert("Исходное фото не найдено");
@@ -256,6 +255,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Attach to original image to open Lightbox
+    if (originalImg) {
+        const handleOpenOrig = (e) => {
+            if (e.type === 'touchend') e.preventDefault();
+            openLightbox(originalImg.src, "Исходное фото");
+        };
+        originalImg.addEventListener("click", handleOpenOrig);
+        originalImg.addEventListener("touchend", handleOpenOrig);
+    }
+
     // Pairing buttons
     document.querySelectorAll('.btn-pairing').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -265,98 +274,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ==========================================
-    // Original Photo Zoom & Pan Logic
-    // ==========================================
-    let origScale = 1;
-    let origPosX = 0;
-    let origPosY = 0;
-    let origIsDragging = false;
-    let origStartX, origStartY;
-
-    function updateOriginalTransform() {
-        if (originalImg) originalImg.style.transform = `translate(${origPosX}px, ${origPosY}px) scale(${origScale})`;
-    }
-
-    function resetOriginalTransform() {
-        origScale = 1;
-        origPosX = 0;
-        origPosY = 0;
-        updateOriginalTransform();
-    }
-
-    if (originalCanvas) {
-        originalCanvas.addEventListener("wheel", (e) => {
-            e.preventDefault();
-            const zoomFactor = 1.1;
-            if (e.deltaY < 0) {
-                origScale *= zoomFactor;
-            } else {
-                origScale /= zoomFactor;
-            }
-            updateOriginalTransform();
-        }, { passive: false });
-
-        // Pan desktop
-        originalCanvas.addEventListener("mousedown", (e) => {
-            if (e.button !== 0) return; 
-            origIsDragging = true;
-            origStartX = e.clientX - origPosX;
-            origStartY = e.clientY - origPosY;
-        });
-
-        window.addEventListener("mousemove", (e) => {
-            if (!origIsDragging) return;
-            origPosX = e.clientX - origStartX;
-            origPosY = e.clientY - origStartY;
-            updateOriginalTransform();
-        });
-
-        window.addEventListener("mouseup", () => {
-            origIsDragging = false;
-        });
-
-        // Pan + Pinch mobile
-        let origInitDist = null;
-        let origInitScale = 1;
-
-        originalCanvas.addEventListener("touchstart", (e) => {
-            if (e.touches.length === 1) {
-                origIsDragging = true;
-                origStartX = e.touches[0].clientX - origPosX;
-                origStartY = e.touches[0].clientY - origPosY;
-            } else if (e.touches.length === 2) {
-                origIsDragging = false;
-                const t1 = e.touches[0];
-                const t2 = e.touches[1];
-                origInitDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-                origInitScale = origScale;
-            }
-        });
-
-        window.addEventListener("touchmove", (e) => {
-            if (originalView && !originalView.classList.contains("active")) return;
-            
-            if (e.touches.length === 1 && origIsDragging) {
-                origPosX = e.touches[0].clientX - origStartX;
-                origPosY = e.touches[0].clientY - origStartY;
-                updateOriginalTransform();
-            } else if (e.touches.length === 2 && origInitDist) {
-                const t1 = e.touches[0];
-                const t2 = e.touches[1];
-                const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-                origScale = origInitScale * (dist / origInitDist);
-                updateOriginalTransform();
-            }
-        });
-
-        window.addEventListener("touchend", (e) => {
-            if (e.touches.length < 2) origInitDist = null;
-            if (e.touches.length === 0) origIsDragging = false;
-        });
-    }
-
-    // ==========================================
-    // Lightbox Zoom & Pan Logic (Scanner Result)
+    // Lightbox Zoom & Pan Logic
     // ==========================================
     const lightboxModal = document.getElementById("lightbox-modal");
     const lightboxImg = document.getElementById("lightbox-img");
