@@ -252,12 +252,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (btnSnap && cameraFeed) {
-        btnSnap.addEventListener('click', () => {
-            if (!cameraStream) return;
+        const handleSnap = (e) => {
+            if (e.type === 'touchend') e.preventDefault(); // prevent double firing from click
+            if (!cameraStream) {
+                console.warn("No camera stream active");
+                return;
+            }
+            // Visual feedback
+            btnSnap.style.transform = "scale(0.9)";
+            setTimeout(() => btnSnap.style.transform = "scale(1)", 150);
+
             // Draw current video frame to canvas
             const canvas = document.createElement('canvas');
-            canvas.width = cameraFeed.videoWidth;
-            canvas.height = cameraFeed.videoHeight;
+            canvas.width = cameraFeed.videoWidth || 1080;
+            canvas.height = cameraFeed.videoHeight || 1920;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(cameraFeed, 0, 0, canvas.width, canvas.height);
             
@@ -266,9 +274,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (blob) {
                     const file = new File([blob], "snapshot.jpg", { type: "image/jpeg" });
                     processImageFile(file);
+                } else {
+                    alert("Ошибка создания снимка с камеры");
                 }
             }, 'image/jpeg', 0.9);
-        });
+        };
+        
+        btnSnap.addEventListener('click', handleSnap);
+        btnSnap.addEventListener('touchend', handleSnap);
     }
 
     // --- Load Wine Metadata & Image ---
