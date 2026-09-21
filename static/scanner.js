@@ -555,10 +555,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const img = slot.querySelector('.glass-img');
             if (val <= rating) {
                 slot.classList.add('active-bg');
-                img.src = 'static/img/glass_filled_straight.png';
+                img.src = 'img/glass_filled_straight.png';
             } else {
                 slot.classList.remove('active-bg');
-                img.src = 'static/img/glass_empty_straight.png';
+                img.src = 'img/glass_empty_straight.png';
             }
         });
     }

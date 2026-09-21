@@ -73,6 +73,17 @@ async def get_scanner_js():
 async def get_scanner_html():
     return FileResponse("d:/VINA/static/scanner.html", media_type="text/html")
 
+@app.get("/znak.png")
+async def get_znak():
+    return FileResponse("d:/VINA/static/znak.png", media_type="image/png")
+
+@app.get("/badge_glass.png")
+async def get_badge():
+    return FileResponse("d:/VINA/static/badge_glass.png", media_type="image/png")
+
+app.mount("/img", StaticFiles(directory="d:/VINA/static/img"), name="root_img")
+app.mount("/svg", StaticFiles(directory="d:/VINA/static/svg"), name="root_svg")
+
 @app.get("/api/health")
 async def health_check():
     gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None (CPU)"
