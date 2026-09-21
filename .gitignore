@@ -26,6 +26,16 @@ __MACOSX/
 
 # Temporary debug visualizations
 scratch_debug/
+scratch/
+debug_masks/
+eval_results/
+ocr_test_boxes.jpg
+scratch_test_symmetric_fit.png
+test_alpha.webp
+
+# Raw image datasets and media dumps
+media/
+test_dataset/butilki/
 
 # Binaries and tools
 bin/
