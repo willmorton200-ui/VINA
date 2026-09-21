@@ -12,9 +12,7 @@
         <!-- Header -->
         <header class="header">
             <div class="logo">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M8 21h8M12 21v-8M12 13c-2.5 0-5-2-5-5V3h10v5c0 3-2.5 5-5 5z"/>
-                </svg>
+                <img src="static/znak.png" alt="Знак" style="width: 24px; height: 24px; border-radius: 50%;">
                 <span>Своё Вино</span>
             </div>
             <div class="header-right">
@@ -78,7 +76,12 @@
             <div class="wine-card">
                 <div class="wine-image-container">
                     <img id="wine-image" src="" alt="Wine Image">
-                    <div class="rating-badge">★ 85+ Роскачество</div>
+                    <div class="people-rating-badge" id="people-rating-badge" style="cursor: pointer;">
+                        <div class="badge-icon-wrapper">
+                            <img src="static/img/glass_filled_straight.png" alt="" class="badge-icon">
+                        </div>
+                        Народный рейтинг <span id="badge-score">-</span>
+                    </div>
                 </div>
                 
                 <div class="wine-info">
@@ -99,6 +102,23 @@
                     <p class="wine-description" id="wine-description"></p>
                 </div>
             </div>
+
+            <!-- Народный рейтинг -->
+            <section class="rating-section" id="rating-section">
+                <h3>Поставь свою оценку</h3>
+                
+                <div class="glasses-container" id="glasses-container">
+                    <div class="glass-slot" data-index="1"><img src="static/img/glass_empty_straight.png" alt="1" class="glass-img"></div>
+                    <div class="glass-slot" data-index="2"><img src="static/img/glass_empty_straight.png" alt="2" class="glass-img"></div>
+                    <div class="glass-slot" data-index="3"><img src="static/img/glass_empty_straight.png" alt="3" class="glass-img"></div>
+                    <div class="glass-slot" data-index="4"><img src="static/img/glass_empty_straight.png" alt="4" class="glass-img"></div>
+                    <div class="glass-slot" data-index="5"><img src="static/img/glass_empty_straight.png" alt="5" class="glass-img"></div>
+                </div>
+                <div class="rating-stats">
+                    <div id="user-rating-text">Ваша оценка: - из 5</div>
+                    <div class="stats-small">Всего оценок: <span id="total-votes">0</span> &bull; Средний балл: <span id="avg-score">0.0</span></div>
+                </div>
+            </section>
 
             <!-- Sommelier Section (Retention) -->
             <div class="sommelier-section">

@@ -112,22 +112,32 @@ class WineSearchEngine:
         pil_img = Image.fromarray(rgb_img)
         emb = self.get_embedding(pil_img)
         
-        # FAISS search
-        scores, indices = self.index.search(emb, top_k)
-        
+        # FAISS search (запрашиваем с запасом для дедупликации вин с несколькими векторами)
+        k_search = min(top_k * 4, self.index.ntotal)
+        scores, indices = self.index.search(emb, k_search)
+
         results = []
-        for i in range(top_k):
+        seen_slugs = set()
+
+        for i in range(k_search):
             idx = indices[0][i]
             score = float(scores[0][i])
             if idx < 0 or idx >= len(self.slugs):
                 continue
-                
+
             slug = self.slugs[idx]
+            if slug in seen_slugs:
+                continue
+            seen_slugs.add(slug)
+
             wine_data = self.catalog.get_wine(slug)
             results.append({
                 "slug": slug,
                 "score": score,  # Cosine similarity (-1 to 1)
                 "wine_data": wine_data
             })
-            
+
+            if len(results) >= top_k:
+                break
+
         return results

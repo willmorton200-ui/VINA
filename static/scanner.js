@@ -74,6 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnAddToDb = document.getElementById('btn-add-to-db');
 
     let currentUploadedImageURL = null;
+    let currentSlug = null;
 
     // --- Views Switcher ---
     let cameraStream = null;
@@ -286,6 +287,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Load Wine Metadata & Image ---
     async function loadWineCard(slug) {
+        currentSlug = slug;
         const res = await fetch(apiUrl(`/api/wine/${slug}`));
         if (!res.ok) throw new Error('Карточка не найдена');
         const wine = await res.json();
@@ -301,6 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elRegion.textContent = wine.region || '';
         elGrape.textContent = wine.grape || '';
         elDesc.textContent = wine.description || '';
+        if(typeof initRating === 'function') initRating(slug);
     }
 
     btnBack.addEventListener('click', () => {
@@ -503,6 +506,113 @@ document.addEventListener('DOMContentLoaded', () => {
                 closeLightbox();
             }
         }
+    });
+
+
+    // ==========================================
+    // Rating Logic
+    // ==========================================
+    const ratingBadge = document.getElementById('people-rating-badge');
+    const badgeScore = document.getElementById('badge-score');
+    const ratingSection = document.getElementById('rating-section');
+    const glassSlots = document.querySelectorAll('.glass-slot');
+    const userRatingText = document.getElementById('user-rating-text');
+    const totalVotesEl = document.getElementById('total-votes');
+    const avgScoreEl = document.getElementById('avg-score');
+
+    let currentRating = 0;
+    
+    // Fallback global ratings (mock)
+    let globalStats = JSON.parse(localStorage.getItem('vina_global_ratings')) || {};
+
+    window.initRating = function(slug) {
+        if (!globalStats[slug]) {
+            globalStats[slug] = { total: 15, sum: 67 }; // Mock initial data: avg 4.46 -> 4.5
+        }
+        
+        const userSaved = localStorage.getItem('vina_rating_' + slug);
+        currentRating = userSaved ? parseInt(userSaved) : 0;
+        
+        updateRatingUI(currentRating, slug);
+    };
+
+    function updateRatingUI(rating, slug) {
+        const stats = globalStats[slug] || { total: 1, sum: rating || 5 };
+        const avg = (stats.sum / stats.total).toFixed(1);
+        
+        badgeScore.textContent = avg;
+        avgScoreEl.textContent = avg;
+        totalVotesEl.textContent = stats.total;
+        
+        if (rating > 0) {
+            userRatingText.textContent = `Ваша оценка: ${rating} из 5`;
+        } else {
+            userRatingText.textContent = 'Ваша оценка: - из 5';
+        }
+
+        glassSlots.forEach((slot, index) => {
+            const val = index + 1;
+            const img = slot.querySelector('.glass-img');
+            if (val <= rating) {
+                slot.classList.add('active-bg');
+                img.src = 'static/img/glass_filled_straight.png';
+            } else {
+                slot.classList.remove('active-bg');
+                img.src = 'static/img/glass_empty_straight.png';
+            }
+        });
+    }
+
+    if (ratingBadge && ratingSection) {
+        ratingBadge.addEventListener('click', () => {
+            ratingSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+    }
+
+    glassSlots.forEach((slot, index) => {
+        const val = index + 1;
+        
+        // Hover
+        slot.addEventListener('mouseenter', () => {
+            glassSlots.forEach((s, i) => {
+                if (i <= index) {
+                    s.classList.add('active-bg');
+                } else {
+                    if (i + 1 > currentRating) {
+                        s.classList.remove('active-bg');
+                    }
+                }
+            });
+        });
+
+        // Leave
+        slot.addEventListener('mouseleave', () => {
+            updateRatingUI(currentRating, currentSlug);
+        });
+
+        // Click
+        const handleRatingClick = (e) => {
+            if (e.type === 'touchend') e.preventDefault();
+            if (!currentSlug) return;
+            
+            // If replacing previous rating, remove old from sum
+            if (currentRating > 0) {
+                globalStats[currentSlug].sum -= currentRating;
+            } else {
+                globalStats[currentSlug].total += 1;
+            }
+            
+            currentRating = val;
+            globalStats[currentSlug].sum += currentRating;
+            
+            localStorage.setItem('vina_rating_' + currentSlug, currentRating);
+            localStorage.setItem('vina_global_ratings', JSON.stringify(globalStats));
+            
+            updateRatingUI(currentRating, currentSlug);
+        };
+
+        slot.addEventListener('click', handleRatingClick);
+        slot.addEventListener('touchend', handleRatingClick);
     });
 
 });
