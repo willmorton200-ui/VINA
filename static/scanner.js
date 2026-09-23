@@ -525,6 +525,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Fallback global ratings (mock)
     let globalStats = JSON.parse(localStorage.getItem('vina_global_ratings')) || {};
 
+    window.setConfidence = function(score) {
+        const el = document.getElementById('confidence-score');
+        if (el) {
+            let val = score;
+            if (typeof score === 'number') {
+                val = score <= 1 && score > 0 ? Math.round(score * 100) : Math.round(score);
+            }
+            el.textContent = `${val}%`;
+        }
+    };
+
     window.initRating = function(slug) {
         if (!globalStats[slug]) {
             globalStats[slug] = { total: 15, sum: 67 }; // Mock initial data: avg 4.46 -> 4.5
