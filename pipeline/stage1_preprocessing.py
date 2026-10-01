@@ -156,8 +156,7 @@ class Stage1Preprocessor:
                         in_central_third = (w / 3.0 <= cx <= 2.0 * w / 3.0) and (h / 3.0 <= cy <= 2.0 * h / 3.0)
                         
                         # 1. Первый критерий: центр тяжести строго в центральной трети!
-                        if not in_central_third:
-                            continue
+                        # (Проверка перенесена ниже, чтобы не отбрасывать все маски, если ни одна не попала в центр)
                             
                         # 2. Исключаем маски бутылки (если высота маски больше 70% от высоты кадра и это не макро-снимок)
                         # Либо если площадь маски слишком огромна, а соотношение сторон типично для бутылки
@@ -221,6 +220,12 @@ class Stage1Preprocessor:
                     valid_candidates = [c for i, c in enumerate(parsed_candidates) if i not in suppressed_indices]
                     if not valid_candidates:
                         valid_candidates = parsed_candidates
+
+                    # Если хотя бы одна маска попала в центральную треть, оставляем только их.
+                    # Если ни одна не попала - выбираем из всех (позже по площади/скору).
+                    central_candidates = [c for c in valid_candidates if c["in_central_third"]]
+                    if central_candidates:
+                        valid_candidates = central_candidates
 
                     if valid_candidates:
                         max_conf = max(c["conf"] for c in valid_candidates)
