@@ -254,19 +254,22 @@ class SAMRefiner:
                     multimask_output=True
                 )
 
-        # Select the mask with the HIGHEST SAM confidence score (IoU prediction)
+        # Select the mask with the largest area among those with reasonable score
         masks_np = masks[0].cpu().numpy()  # shape: (3, H, W)
         scores_np = scores[0].cpu().numpy()  # shape: (3,)
-        
-        best_idx = int(np.argmax(scores_np))
-        best_area = np.sum(masks_np[best_idx])
+        best_idx = 0
+        best_area = 0
         
         logger.info(f"[SAMRefiner] SAM predicted 3 masks:")
         for i in range(masks_np.shape[0]):
             area = np.sum(masks_np[i])
             logger.info(f"  Mask {i}: score={scores_np[i]:.4f}, area={area}")
-            
-        logger.info(f"[SAMRefiner] Selected Mask {best_idx} with score {scores_np[best_idx]:.4f} and area {best_area}")
+            if scores_np[i] > 0.85:
+                if area > best_area:
+                    best_area = area
+                    best_idx = i
+                    
+        logger.info(f"[SAMRefiner] Selected Mask {best_idx} with area {best_area}")
         local_mask = (masks_np[best_idx] > 0.5).astype(np.uint8) * 255
         score = float(scores_np[best_idx])
 
