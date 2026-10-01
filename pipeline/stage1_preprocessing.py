@@ -221,13 +221,18 @@ class Stage1Preprocessor:
                     if not valid_candidates:
                         valid_candidates = parsed_candidates
 
-                    # Если хотя бы одна маска попала в центральную треть, оставляем только их.
-                    # Если ни одна не попала - выбираем из всех (позже по площади/скору).
-                    central_candidates = [c for c in valid_candidates if c["in_central_third"]]
-                    if central_candidates:
-                        valid_candidates = central_candidates
-
                     if valid_candidates:
+                        max_conf_overall = max(c["conf"] for c in valid_candidates)
+                        # Если хотя бы одна маска попала в центральную треть И имеет адекватную уверенность, оставляем только их.
+                        # Иначе (никто не попал или попал только мусор) - выбираем из всех (позже по площади/скору).
+                        central_candidates = [
+                            c for c in valid_candidates 
+                            if c["in_central_third"] and c["conf"] >= max(0.4, max_conf_overall - 0.3)
+                        ]
+                        
+                        if central_candidates:
+                            valid_candidates = central_candidates
+
                         max_conf = max(c["conf"] for c in valid_candidates)
                         for c in valid_candidates:
                             bx1, by1, bx2, by2 = c["box"]
