@@ -497,7 +497,7 @@ class MaskVectorizer:
                     
                     # 4. Фитим линию строго по этим 10 равномерным точкам
                     vx, vy, cx, cy = cv2.fitLine(anchor_pts, cv2.DIST_L2, 0, 0.01, 0.01)
-                    vx, vy, cx, cy = float(vx), float(vy), float(cx), float(cy)
+                    vx, vy, cx, cy = float(vx[0]), float(vy[0]), float(cx[0]), float(cy[0])
                     
                     # 5. Проверяем максимальное отдаление не более 2 пикселей
                     m_fit = vx / (vy + 1e-6)

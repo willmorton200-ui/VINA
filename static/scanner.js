@@ -9,12 +9,16 @@ document.addEventListener('DOMContentLoaded', () => {
             return clean;
         }
 
+        if (window.location.protocol === 'file:') {
+            return 'http://127.0.0.1:8080';
+        }
+
         // Always prefer direct local connection if running locally
         const isLocalHost = window.location.hostname === 'localhost' || 
                             window.location.hostname === '127.0.0.1' || 
                             window.location.hostname === '0.0.0.0' ||
-                            window.location.port === '8080' ||
-                            !window.location.hostname;
+                            window.location.port === '8080';
+        
         if (isLocalHost) {
             return '';
         }
@@ -229,6 +233,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await res.json();
                 
                 if (data.slug) {
+                    const conf = data.confidence !== undefined ? data.confidence : data.score;
+                    if (typeof window.setConfidence === 'function' && conf !== undefined && conf !== null) {
+                        window.setConfidence(conf);
+                    }
                     await loadWineCard(data.slug);
                     showView(resultView);
                 } else {
@@ -300,9 +308,31 @@ document.addEventListener('DOMContentLoaded', () => {
         elTitle.textContent = wine.name || slug;
         elColor.textContent = wine.color || '';
         elCategory.textContent = wine.category || '';
+        
+        const elSweetness = document.getElementById('wine-sweetness');
+        if (elSweetness) {
+            elSweetness.textContent = wine.sweetness || '';
+            elSweetness.style.display = wine.sweetness ? '' : 'none';
+        }
+        
         elRegion.textContent = wine.region || '';
         elGrape.textContent = wine.grape || '';
         elDesc.textContent = wine.description || '';
+        
+        // Populate Original View Card
+        const ow = document.getElementById('orig-wine-winery'); if(ow) ow.textContent = wine.winery || '';
+        const ot = document.getElementById('orig-wine-title'); if(ot) ot.textContent = wine.name || slug;
+        const oc = document.getElementById('orig-wine-category'); if(oc) oc.textContent = wine.category || '';
+        const os = document.getElementById('orig-wine-sweetness');
+        if (os) {
+            os.textContent = wine.sweetness || '';
+            os.style.display = wine.sweetness ? '' : 'none';
+        }
+        const ocol = document.getElementById('orig-wine-color'); if(ocol) ocol.textContent = wine.color || '';
+        const or = document.getElementById('orig-wine-region'); if(or) or.textContent = wine.region || '';
+        const og = document.getElementById('orig-wine-grape'); if(og) og.textContent = wine.grape || '';
+        const od = document.getElementById('orig-wine-desc'); if(od) od.textContent = wine.description || '';
+
         if(typeof initRating === 'function') initRating(slug);
     }
 
@@ -530,7 +560,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (el) {
             let val = score;
             if (typeof score === 'number') {
-                val = score <= 1 && score > 0 ? Math.round(score * 100) : Math.round(score);
+                val = score <= 1.0 && score >= 0 ? Math.round(score * 100) : Math.round(score);
+                val = Math.min(100, Math.max(0, val));
             }
             el.textContent = `${val}%`;
         }
@@ -654,16 +685,99 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const sommelierResponse = document.getElementById('sommelier-response');
+
     const btnAnalogs = document.getElementById('btn-sommelier-analogs');
     if (btnAnalogs) {
-        btnAnalogs.addEventListener('click', () => {
-            showToast('🍷 Подбор аналогов появится в следующем обновлении');
+        btnAnalogs.addEventListener('click', async () => {
+            if (!currentSlug) {
+                showToast('Сначала отсканируйте вино');
+                return;
+            }
+            
+            const dish = document.getElementById('sommelier-input').value.trim();
+            const q = `Предложи аналоги вину` + (dish ? ` к блюду/поводу ${dish}` : "");
+            
+            sommelierResponse.classList.remove('hidden');
+            sommelierResponse.innerHTML = '<span style="opacity:0.7">Подбираем аналоги...</span>';
+            
+            try {
+                const res = await fetch(apiUrl('/api/sommelier/ask'), {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({text: q, wine_slug: currentSlug})
+                });
+                if (!res.ok) throw new Error(`Ошибка сервера: ${res.status}`);
+                const data = await res.json();
+                
+                let html = data.text ? data.text.replace(/\n/g, '<br>') : "Сомелье задумался...";
+                if (data.picks && data.picks.length > 0) {
+                    html += '<div style="margin-top: 15px; display:flex; flex-direction:column; gap:8px;">';
+                    data.picks.forEach(p => {
+                        let score5 = Math.round(p.score * 5);
+                        if (score5 < 1) score5 = 1;
+                        if (score5 > 5) score5 = 5;
+                        let glasses = '🍷'.repeat(score5);
+                        html += `<div style="padding:10px; background:rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius:6px;"><strong>${p.name}</strong> <span style="opacity:0.6; font-size:12px;">(Народный рейтинг: ${glasses})</span></div>`;
+                    });
+                    html += '</div>';
+                }
+                
+                sommelierResponse.innerHTML = html;
+            } catch (err) {
+                console.error(err);
+                sommelierResponse.innerHTML = '<span style="color:#ff6b6b">Ошибка связи с цифровым сомелье.</span>';
+            }
+        });
+    }
+
+    const btnAsk = document.getElementById('btn-sommelier-ask');
+    if (btnAsk) {
+        btnAsk.addEventListener('click', async () => {
+            if (!currentSlug) return;
+            const dish = document.getElementById('sommelier-input').value.trim();
+            if (!dish) {
+                showToast("Укажите блюдо или повод");
+                return;
+            }
+            sommelierResponse.classList.remove('hidden');
+            sommelierResponse.innerHTML = '<span style="opacity:0.7">Спрашиваем сомелье...</span>';
+            try {
+                const res = await fetch(apiUrl(`/api/sommelier/wine/${currentSlug}?dish=${encodeURIComponent(dish)}`));
+                if (!res.ok) throw new Error(`Ошибка сервера: ${res.status}`);
+                const data = await res.json();
+                sommelierResponse.innerHTML = data.text ? data.text.replace(/\n/g, '<br>') : "Нет ответа.";
+            } catch (err) {
+                console.error(err);
+                sommelierResponse.innerHTML = '<span style="color:#ff6b6b">Ошибка связи с цифровым сомелье.</span>';
+            }
         });
     }
 
     document.querySelectorAll('.btn-pairing').forEach(btn => {
-        btn.addEventListener('click', () => {
-            btn.classList.toggle('selected');
+        btn.addEventListener('click', async () => {
+            document.querySelectorAll('.btn-pairing').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            
+            if (!currentSlug) return;
+            
+            const dish = btn.textContent.trim().toLowerCase();
+            const inputEl = document.getElementById('sommelier-input');
+            if (inputEl) inputEl.value = dish;
+            
+            sommelierResponse.classList.remove('hidden');
+            sommelierResponse.innerHTML = '<span style="opacity:0.7">Спрашиваем сомелье...</span>';
+            
+            try {
+                const res = await fetch(apiUrl(`/api/sommelier/wine/${currentSlug}?dish=${encodeURIComponent(dish)}`));
+                if (!res.ok) throw new Error(`Ошибка сервера: ${res.status}`);
+                const data = await res.json();
+                
+                sommelierResponse.innerHTML = data.text ? data.text.replace(/\n/g, '<br>') : "Нет ответа.";
+            } catch (err) {
+                console.error(err);
+                sommelierResponse.innerHTML = '<span style="color:#ff6b6b">Ошибка связи с цифровым сомелье.</span>';
+            }
         });
     });
 

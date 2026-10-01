@@ -139,9 +139,31 @@ class Stage1Preprocessor:
                             left_contact = np.count_nonzero(m_full[:, :2])
                             right_contact = np.count_nonzero(m_full[:, w-2:])
                             total_contact = top_contact + bot_contact + left_contact + right_contact
+                            
+                            # Второе правило: не выбирать маску, которая пересекается с краями фото более чем на 20%
+                            if total_contact > 0.20 * 4 * (w + h):
+                                continue
 
                         touches_border = (bx1 <= 10 or by1 <= 10 or bx2 >= w - 10 or by2 >= h - 10)
                         
+                        cx, cy = int((bx1 + bx2) / 2), int((by1 + by2) / 2)
+                        if m_full is not None:
+                            M = cv2.moments(m_full)
+                            if M["m00"] != 0:
+                                cx = int(M["m10"] / M["m00"])
+                                cy = int(M["m01"] / M["m00"])
+                                
+                        in_central_third = (w / 3.0 <= cx <= 2.0 * w / 3.0) and (h / 3.0 <= cy <= 2.0 * h / 3.0)
+                        
+                        # 1. Первый критерий: центр тяжести строго в центральной трети!
+                        if not in_central_third:
+                            continue
+                            
+                        # 2. Исключаем маски бутылки (если высота маски больше 70% от высоты кадра и это не макро-снимок)
+                        # Либо если площадь маски слишком огромна, а соотношение сторон типично для бутылки
+                        if bh_box > 0.70 * h and ar < 0.6:
+                            continue
+                            
                         parsed_candidates.append({
                             "idx": idx,
                             "box": [bx1, by1, bx2, by2],
@@ -152,7 +174,8 @@ class Stage1Preprocessor:
                             "conf": float(conf),
                             "mask": m_full,
                             "total_contact": total_contact,
-                            "touches_border": touches_border
+                            "touches_border": touches_border,
+                            "in_central_third": in_central_third
                         })
 
                     # Hierarchical nested suppression: if Candidate A is an oversized container enclosing Candidate B (e.g. bottle body enclosing label),
@@ -273,12 +296,10 @@ class Stage1Preprocessor:
         pad = 10
         pad_top = 30
         pad_bottom = 60
-        coords = cv2.findNonZero(label_mask_full)
-        if coords is not None:
-            lx_min = int(np.min(coords[:, 0, 0]))
-            lx_max = int(np.max(coords[:, 0, 0]))
-            ly_min = int(np.min(coords[:, 0, 1]))
-            ly_max = int(np.max(coords[:, 0, 1]))
+        x, y, bw, bh = cv2.boundingRect(label_mask_full)
+        if bw > 0 and bh > 0:
+            lx_min, lx_max = x, x + bw - 1
+            ly_min, ly_max = y, y + bh - 1
             
             x0 = max(0, lx_min - pad)
             y0 = max(0, ly_min - pad_top)
@@ -382,21 +403,35 @@ class Stage1Preprocessor:
         return filled
 
     def _fallback_segmentation(self, img_bgr: np.ndarray) -> np.ndarray:
-        """Saliency & GrabCut based fallback foreground isolation"""
+        """Saliency & GrabCut based fallback foreground isolation (optimized via downscaling)"""
         h, w = img_bgr.shape[:2]
-        mask = np.zeros((h, w), dtype=np.uint8)
-        margin_x = int(w * 0.08)
-        margin_y = int(h * 0.05)
-        rect = (margin_x, margin_y, w - 2 * margin_x, h - 2 * margin_y)
+        scale = min(400.0 / w, 400.0 / h)
+        if scale < 1.0:
+            small_w, small_h = int(w * scale), int(h * scale)
+            img_small = cv2.resize(img_bgr, (small_w, small_h))
+        else:
+            img_small = img_bgr.copy()
+            small_w, small_h = w, h
+
+        mask_small = np.zeros((small_h, small_w), dtype=np.uint8)
+        margin_x = int(small_w * 0.08)
+        margin_y = int(small_h * 0.05)
+        rect = (margin_x, margin_y, small_w - 2 * margin_x, small_h - 2 * margin_y)
         
         bgdModel = np.zeros((1, 65), np.float64)
         fgdModel = np.zeros((1, 65), np.float64)
         try:
-            cv2.grabCut(img_bgr, mask, rect, bgdModel, fgdModel, 3, cv2.GC_INIT_WITH_RECT)
-            return np.where((mask == 2) | (mask == 0), 0, 255).astype(np.uint8)
+            cv2.grabCut(img_small, mask_small, rect, bgdModel, fgdModel, 3, cv2.GC_INIT_WITH_RECT)
+            mask_small = np.where((mask_small == 2) | (mask_small == 0), 0, 255).astype(np.uint8)
         except Exception:
-            mask[margin_y:h - margin_y, margin_x:w - margin_x] = 255
-            return mask
+            mask_small[margin_y:small_h - margin_y, margin_x:small_w - margin_x] = 255
+            
+        if scale < 1.0:
+            mask = cv2.resize(mask_small, (w, h), interpolation=cv2.INTER_NEAREST)
+        else:
+            mask = mask_small
+            
+        return mask
 
     def _guided_filter_mask(self, guide_bgr: np.ndarray, mask: np.ndarray) -> np.ndarray:
         """Guided filter boundary refinement"""

@@ -37,12 +37,12 @@ def main():
     image_paths = []
     if args.input:
         if os.path.isdir(args.input):
-            for ext in ["*.jpg", "*.jpeg", "*.png", "*.JPG", "*.PNG"]:
+            for ext in ["*.jpg", "*.jpeg", "*.png", "*.JPG", "*.PNG", "*.webp", "*.WEBP"]:
                 image_paths.extend(glob.glob(os.path.join(args.input, ext)))
         else:
             image_paths.append(args.input)
     elif args.input_dir:
-        for ext in ["*.jpg", "*.jpeg", "*.png", "*.JPG", "*.PNG"]:
+        for ext in ["*.jpg", "*.jpeg", "*.png", "*.JPG", "*.PNG", "*.webp", "*.WEBP"]:
             image_paths.extend(glob.glob(os.path.join(args.input_dir, ext)))
     else:
         print("Please provide --input or --input_dir. Example: python run_pipeline.py --input test_dataset/butilki")

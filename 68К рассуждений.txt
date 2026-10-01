@@ -1,0 +1,1617 @@
+Хочу подключить каскад VINA STUDIO к сканеру. Перед выдачей результата в сканере под капотом подключаем VINA STUDIO, после чего полученные после osr тэги исправляем с помощью словаря созданного из классов базы - "Название" и "slug" - в словарь должны входить каждого слова на латинице и на кириллице, затем находим по базе по "slug" на каком id наибольшее совпадение. После чего идет процесс сравнение уверенностей по эмбендингу сканера и уверенностью vina studio - выбирается и выдается id чья уверенность будет выше. При полном совпадении минимум 3х тэгов/слов в результате osr Уверенность VINA STUDIO равна 100%.  Общая уверенность это сумма всех % деленная на 2, выдается как итоговая "Уверенность" на фронте сканера.
+
+Ответ
+Система VINA — это end-to-end решение для распознавания винных этикеток с цилиндрических поверхностей с последующим поиском по базе векторных эмбеддингов.
+
+Проект состоит из двух основных подсистем:
+
+1. **CV Пайплайн (Cylindrical Dewarping & OCR)** - `pipeline/dewarp_engine.py`
+2. **Поисковый движок (SigLIP + FAISS)** - `pipeline/search_engine.py` & `pipeline/catalog.py`
+
+---
+
+## 1. CV Пайплайн (Развертка и распознавание)
+
+Для устранения цилиндрических искажений бутылки используется многоэтапный подход:
+
+1. **Локализация и Сегментация**:
+   - `YOLOv8-seg` находит бутылку на изображении.
+   - `SAM (Segment Anything)` (ViT-H) уточняет маску.
+   - Выделяется наибольшая связная компонента маски.
+
+2. **Извлечение геометрических признаков**:
+   - Находятся 4 физических угла этикетки.
+   - Вычисляются боковые линии (образующие цилиндра).
+
+3. **Оптимизация сетки (Coon's Patch)**:
+   - Строится трансфинитная сетка Кунса, учитывающая кривизну.
+
+4. **Обратная деформация**:
+   - Используется Thin Plate Spline (TPS) трансформация.
+   - Ресемплинг изображения с фильтром Lanczos-4.
+
+5. **Распознавание (OCR)**:
+   - Используется `EasyOCR` (GPU) для извлечения текста.
+
+---
+
+## 2. Поисковый движок (Поиск по каталогу)
+
+Для сопоставления загруженного фото с каталогом «Своё Вино» (2000+ позиций) используется нейросеть **SigLIP 2**.
+
+1. **Подготовка базы (Индексация)**:
+   - `WineCatalog` читает `strapi_output0709.csv` и сопоставляет slug с фотографиями из папки `uploads`.
+   - `WineSearchEngine` прогоняет все изображения через модель `ViT-B-16-SigLIP2-384`.
+   - Полученные векторы L2-нормализуются и добавляются в индекс `FAISS (IndexFlatIP)` (Inner Product эквивалентен Cosine Similarity).
+   - Индекс сохраняется на диск (`models/siglip2_index.faiss`) вместе с маппингом slug-ов.
+
+2. **Поиск (Inference)**:
+   - Сервер получает изображение на `/v1/eval/predict`.
+   - Изображение конвертируется в вектор с помощью SigLIP.
+   - FAISS находит топ-N ближайших векторов.
+   - Сервер возвращает slug наиболее похожего вина.
+
+---
+
+## 3. API и Интерфейс
+
+Бэкенд реализован на **FastAPI** (`app.py`), сервер работает на порту `8080`.
+
+### Ключевые эндпоинты
+
+- `POST /v1/eval/predict` — SLA < 3 сек, используется для скрипта оценки. Возвращает `{"slug": "..."}`.
+- `GET /api/wine/{slug}` — Возвращает метаданные вина (название, сорт, регион и т.д.).
+- `GET /api/image/{slug}` — Раздает оригинальные фотографии вин.
+- `GET /scanner` — Мобильный интерфейс сканера на HTML/CSS/JS.
+
+### Мобильный интерфейс (`static/scanner.html`)
+
+- Адаптивный mobile-first дизайн ("Своё Вино").
+- Позволяет загрузить фото или сделать снимок.
+- Отображает карточку вина и предлагает аналоги ("Цифровой сомелье").
+
+```
+Шаг 3
+Чтение файла
+app.py
+[Файл D:\VINA\app.py успешно прочитан. Содержимое]:
+```
+"""
+FastAPI Server for VINA Cylindrical Dewarping & OCR System
+"""
+
+import os
+import glob
+import cv2
+import numpy as np
+import torch
+import time
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+from pipeline.catalog import WineCatalog
+from pipeline.search_engine import WineSearchEngine
+from pipeline import CylindricalDewarpEngine, compute_image_metrics
+
+app = FastAPI(title="VINA Cylindrical Dewarping Studio", version="1.0.0")
+
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Global engine singleton
+gpu_available = torch.cuda.is_available()
+engine = CylindricalDewarpEngine(use_gpu=gpu_available)
+
+# Wine Catalog & Search Engine
+csv_file = r"D:\VINA\TZ\Датасет\Датасет\strapi_output0709.csv"
+uploads = r"D:\VINA\TZ\Датасет\Датасет\prod-svoe-vino-strapi\prod-svoe-vino\strapi\uploads"
+catalog = WineCatalog(csv_file, uploads)
+search_engine = WineSearchEngine(catalog, use_gpu=gpu_available)
+
+# Mount static folder
+app.mount("/static", StaticFiles(directory="d:/VINA/static"), name="static")
+app.mount("/test_dataset", StaticFiles(directory="d:/VINA/test_dataset"), name="test_dataset")
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_index():
+    with open("d:/VINA/static/index.html", "r", encoding="utf-8") as f:
+        return f.read()
+
+@app.get("/scanner", response_class=HTMLResponse)
+async def serve_scanner():
+    with open("d:/VINA/static/scanner.html", "r", encoding="utf-8") as f:
+        return f.read()
+
+@app.get("/style.css")
+async def get_style_css():
+    return FileResponse("d:/VINA/static/style.css", media_type="text/css")
+
+@app.get("/app.js")
+async def get_app_js():
+    return FileResponse("d:/VINA/static/app.js", media_type="application/javascript")
+
+@app.get("/scanner.css")
+async def get_scanner_css():
+    return FileResponse("d:/VINA/static/scanner.css", media_type="text/css")
+
+@app.get("/scanner.js")
+async def get_scanner_js():
+    return FileResponse("d:/VINA/static/scanner.js", media_type="application/javascript")
+
+@app.get("/scanner.html", response_class=HTMLResponse)
+async def get_scanner_html():
+    return FileResponse("d:/VINA/static/scanner.html", media_type="text/html")
+
+@app.get("/znak.png")
+async def get_znak():
+    return FileResponse("d:/VINA/static/znak.png", media_type="image/png")
+
+@app.get("/badge_glass.png")
+async def get_badge():
+    return FileResponse("d:/VINA/static/badge_glass.png", media_type="image/png")
+
+app.mount("/img", StaticFiles(directory="d:/VINA/static/img"), name="root_img")
+app.mount("/svg", StaticFiles(directory="d:/VINA/static/svg"), name="root_svg")
+
+@app.get("/api/health")
+async def health_check():
+    gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None (CPU)"
+    return {
+        "status": "healthy",
+        "gpu_available": gpu_available,
+        "gpu_name": gpu_name,
+        "torch_version": torch.__version__,
+        "pipeline_stages": [
+            "1. Localization & Preprocessing (YOLOv8-seg, SAM ViT-H, Largest Component)",
+            "2. Geometric Feature Extraction (4 Exact Physical Corners, Lateral Lines)",
+            "3. Cylindrical Grid Optimization (Coon's Patch Transfinite Grid)",
+            "4. Backward Deformation Remapping (TPS, Lanczos-4)",
+            "5. Character Recognition & Code Decoding (EasyOCR GPU)"
+        ]
+    }
+
+@app.get("/api/samples")
+async def list_sample_bottles():
+    """Lists available test bottles from test_dataset/butilki and test_dataset/cam."""
+    butilki_dir = "d:/VINA/test_dataset/butilki"
+    cam_dir = "d:/VINA/test_dataset/cam"
+    cat_dir = "d:/VINA/test_dataset/calalog"
+    
+    samples = []
+    
+    # Priority: User dataset 'butilki'
+    butilki_files = sorted(glob.glob(os.path.join(butilki_dir, "*.*")))
+    for fpath in butilki_files:
+        fname = os.path.basename(fpath)
+        base_id = fname.split('_')[0]
+        
+        cat_matches = glob.glob(os.path.join(cat_dir, f"{base_id}_*"))
+        has_catalog = len(cat_matches) > 0
+        cat_rel = f"/test_dataset/calalog/{os.path.basename(cat_matches[0])}" if has_catalog else None
+
+        display_title = fname.replace(".jpeg", "").replace(".jpg", "").replace(".png", "").replace("_", " ")
+        if len(display_title) > 35:
+            display_title = display_title[:32] + "..."
+
+        samples.append({
+            "id": base_id,
+            "filename": fname,
+            "folder": "butilki",
+            "title": display_title,
+            "cam_url": f"/test_dataset/butilki/{fname}",
+            "cat_url": cat_rel,
+            "has_catalog": has_catalog
+        })
+
+    # Also include cam dataset if any
+    cam_files = sorted(glob.glob(os.path.join(cam_dir, "*.*")))
+    for fpath in cam_files:
+        fname = os.path.basename(fpath)
+        base_id = fname.split('_')[0]
+        cat_matches = glob.glob(os.path.join(cat_dir, f"{base_id}_*"))
+        has_catalog = len(cat_matches) > 0
+        cat_rel = f"/test_dataset/calalog/{os.path.basename(cat_matches[0])}" if has_catalog else None
+
+        display_title = fname.replace(".jpeg", "").replace(".jpg", "").replace("_", " ")
+        if len(display_title) > 35:
+            display_title = display_title[:32] + "..."
+
+        samples.append({
+            "id": base_id,
+            "filename": fname,
+            "folder": "cam",
+            "title": display_title,
+            "cam_url": f"/test_dataset/cam/{fname}",
+            "cat_url": cat_rel,
+            "has_catalog": has_catalog
+        })
+
+    return {"samples": samples}
+
+class ProcessSampleRequest(BaseModel):
+    sample_filename: str
+
+@app.post("/api/process_sample")
+async def process_sample(req: ProcessSampleRequest):
+    # Check in butilki first, then in cam
+    path1 = os.path.join("d:/VINA/test_dataset/butilki", req.sample_filename)
+    path2 = os.path.join("d:/VINA/test_dataset/cam", req.sample_filename)
+    
+    img_path = path1 if os.path.exists(path1) else path2
+    if not os.path.exists(img_path):
+        raise HTTPException(status_code=404, detail="Sample image not found")
+
+    img_bgr = cv2.imread(img_path)
+    if img_bgr is None:
+        raise HTTPException(status_code=400, detail="Failed to decode sample image")
+
+    # Match catalog if any
+    base_id = req.sample_filename.split('_')[0]
+    cat_matches = glob.glob(os.path.join("d:/VINA/test_dataset/calalog", f"{base_id}_*"))
+    ref_bgr = cv2.imread(cat_matches[0]) if cat_matches else None
+
+    result = engine.process_image(img_bgr, reference_bgr=ref_bgr)
+    result["filename"] = req.sample_filename
+    result["has_reference"] = ref_bgr is not None
+    if ref_bgr is not None:
+        result["artifacts"]["catalog_reference"] = engine.img_to_base64(ref_bgr)
+
+    return result
+
+@app.post("/api/process_upload")
+async def process_upload(file: UploadFile = File(...)):
+    contents = await file.read()
+    nparr = np.frombuffer(contents, np.uint8)
+    img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    if img_bgr is None:
+        raise HTTPException(status_code=400, detail="Uploaded file is not a valid image")
+
+    result = engine.process_image(img_bgr)
+    result["filename"] = file.filename
+    result["has_reference"] = False
+    return result
+
+@app.post("/v1/eval/predict")
+async def eval_predict(image: UploadFile = File(...)):
+    """
+    Endpoint для скрипта оценки РСХБ.Цифра.
+    Принимает фото, возвращает {'slug': 'found-slug'}.
+    SLA < 3 sec.
+    """
+    t0 = time.time()
+    contents = await image.read()
+    nparr = np.frombuffer(contents, np.uint8)
+    img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    if img_bgr is None:
+        raise HTTPException(status_code=400, detail="Uploaded file is not a valid image")
+
+    # 1. Поиск по сырому изображению (очень быстро)
+    # 2. Если хотим максимум F1, можно сначала прогнать через engine (YOLO -> SAM -> Dewarp) и искать по кропу!
+    # Подсказка от кейсодержателя: "нормализация фото заметно улучшает F1"
+    
+    # Для начала попробуем искать прямо по оригинальному фото (так как SigLIP устойчив к шуму)
+    # Но для 90-100% мы применим YOLO crop
+    
+    # Пока просто ищем по оригинальному:
+    results = search_engine.search_by_cv2_image(img_bgr, top_k=1)
+    
+    if not results:
+        return {"slug": None, "score": 0.0, "confidence": 0.0}
+        
+    score = float(results[0].get("score", 0.0))
+    return {
+        "slug": results[0]["slug"],
+        "score": round(score, 4),
+        "confidence": round(score, 4),
+    }
+
+@app.get("/api/wine/{slug}")
+async def get_wine_card(slug: str):
+    wine = catalog.get_wine(slug)
+    if not wine:
+        raise HTTPException(status_code=404, detail="Wine not found")
+    return wine
+
+@app.get("/api/image/{slug}")
+async def get_wine_image(slug: str):
+    wine = catalog.get_wine(slug)
+    if not wine or not wine["image_path"]:
+        raise HTTPException(status_code=404, detail="Image not found")
+    return FileResponse(wine["image_path"])
+
+if __name__ == "__main__":
+    import uvicorn
+    import webbrowser
+    import threading
+    import urllib.request
+
+    def _open_ui_when_ready():
+        for _ in range(120):
+            time.sleep(0.5)
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:8080/api/health", timeout=1) as resp:
+                    if resp.status == 200:
+                        webbrowser.open("http://127.0.0.1:8080")
+                        break
+            except Exception:
+                pass
+
+    threading.Thread(target=_open_ui_when_ready, daemon=True).start()
+    uvicorn.run(app, host="0.0.0.0", port=8080)
+
+```
+Шаг 4
+Чтение файла
+test_vina_scanner.py
+[Файл D:\VINA\test_vina_scanner.py успешно прочитан. Содержимое]:
+```
+#!/usr/bin/env python3
+"""
+Тест точности и времени отклика для проекта VINA Scanner.
+Совместим с форматом организатора и заказчика (owner_eval: пакеты 1 и 2).
+
+Режимы работы:
+  1) direct (по умолчанию) — прямой сверхбыстрый тест через SigLIP2 + FAISS WineSearchEngine (~20-25 мс/кадр).
+  2) http — проверка через HTTP API сервер VINA Studio (http://127.0.0.1:8080/v1/eval/predict).
+"""
+
+import argparse
+import hashlib
+import json
+import mimetypes
+import os
+import sys
+import time
+from pathlib import Path
+import cv2
+import httpx
+
+
+def calculate_sha256(filepath: Path) -> str:
+    h = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        while chunk := f.read(65536):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def run_http_eval(queries, images_dir: Path, endpoint: str, output_path: Path, mapping: dict):
+    print(f"\n[HTTP РЕЖИМ] Отправка запросов на {endpoint}...")
+    client = httpx.Client(timeout=30.0)
+
+    # Health check
+    base_url = endpoint.rsplit("/", 2)[0]
+    try:
+        r = client.get(f"{base_url}/api/health", timeout=2.0)
+        if r.status_code == 200:
+            print("✓ Сервер VINA Studio активен и готов к обработке.")
+    except Exception as e:
+        print(f"Предупреждение: Сервер на {endpoint} не отвечает ({e}). Убедитесь, что запущен app.py!")
+
+    correct = 0
+    total = len(queries)
+    latencies = []
+
+    print("\n" + "-" * 80)
+    print(f"{'#':<3} | {'Query ID':<9} | {'Файл':<14} | {'Статус':<7} | {'Top-1 Slug':<32} | {'Время'}")
+    print("-" * 80)
+
+    with open(output_path, "w", encoding="utf-8", newline="\n") as out_f:
+        for idx, (query_id, image_relpath) in enumerate(queries, 1):
+            image_file = images_dir / image_relpath
+            if not image_file.is_file():
+                continue
+
+            img_sha256 = calculate_sha256(image_file)
+            mime_type, _ = mimetypes.guess_type(str(image_file))
+            if not mime_type:
+                mime_type = "image/jpeg"
+
+            t0 = time.perf_counter()
+            predicted_slug = None
+            latency_ms = 0
+            err_msg = ""
+
+            try:
+                with open(image_file, "rb") as f:
+                    files = {"image": (image_file.name, f, mime_type)}
+                    resp = client.post(endpoint, files=files)
+                latency_ms = round((time.perf_counter() - t0) * 1000)
+
+                if resp.status_code == 200:
+                    data = resp.json()
+                    predicted_slug = data.get("slug")
+                else:
+                    err_msg = f"HTTP {resp.status_code}"
+            except Exception as e:
+                latency_ms = round((time.perf_counter() - t0) * 1000)
+                err_msg = str(e)[:25]
+
+            latencies.append(latency_ms)
+            expected = mapping.get(query_id)
+            ok = (predicted_slug and predicted_slug == expected)
+            if ok:
+                correct += 1
+                status = "✓ OK"
+            else:
+                status = "✗ FAIL"
+
+            slug_disp = (predicted_slug or err_msg or "null")[:32]
+            print(f"{idx:02d} | {query_id:<9} | {image_relpath:<14} | {status:<7} | {slug_disp:<32} | {latency_ms} ms")
+            if not ok and expected:
+                print(f"    ↳ Ожидался : {expected}")
+                print(f"    ↳ Получен  : {predicted_slug}")
+
+            record = {
+                "query_id": query_id,
+                "image_path": image_relpath,
+                "image_sha256": img_sha256,
+                "predicted_slug": predicted_slug,
+                "latency_ms": latency_ms,
+            }
+            out_f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            out_f.flush()
+
+    return correct, total, latencies
+
+
+def run_direct_eval(queries, images_dir: Path, output_path: Path, mapping: dict):
+    print("\n[DIRECT РЕЖИМ] Инициализация движка VINA WineSearchEngine (SigLIP2 + FAISS)...")
+    from pipeline.catalog import WineCatalog
+    from pipeline.search_engine import WineSearchEngine
+
+    csv_file = r"D:\VINA\TZ\Датасет\Датасет\strapi_output0709.csv"
+    uploads = r"D:\VINA\TZ\Датасет\Датасет\prod-svoe-vino-strapi\prod-svoe-vino\strapi\uploads"
+
+    catalog = WineCatalog(csv_file, uploads)
+    engine = WineSearchEngine(catalog, use_gpu=True)
+
+    correct = 0
+    total = len(queries)
+    latencies = []
+
+    print("\n" + "-" * 80)
+    print(f"{'#':<3} | {'Query ID':<9} | {'Файл':<14} | {'Статус':<7} | {'Top-1 Slug':<32} | {'Время'}")
+    print("-" * 80)
+
+    with open(output_path, "w", encoding="utf-8", newline="\n") as out_f:
+        for idx, (query_id, image_relpath) in enumerate(queries, 1):
+            image_file = images_dir / image_relpath
+            if not image_file.is_file():
+                continue
+
+            img_sha256 = calculate_sha256(image_file)
+            img_bgr = cv2.imread(str(image_file))
+
+            t0 = time.perf_counter()
+            results = engine.search_by_cv2_image(img_bgr, top_k=1)
+            latency_ms = round((time.perf_counter() - t0) * 1000)
+            latencies.append(latency_ms)
+
+            predicted_slug = results[0]["slug"] if results else None
+            expected = mapping.get(query_id)
+            ok = (predicted_slug and predicted_slug == expected)
+            if ok:
+                correct += 1
+                status = "✓ OK"
+            else:
+                status = "✗ FAIL"
+
+            slug_disp = (predicted_slug or "null")[:32]
+            print(f"{idx:02d} | {query_id:<9} | {image_relpath:<14} | {status:<7} | {slug_disp:<32} | {latency_ms} ms")
+            if not ok and expected:
+                print(f"    ↳ Ожидался : {expected}")
+                print(f"    ↳ Получен  : {predicted_slug}")
+
+            record = {
+                "query_id": query_id,
+                "image_path": image_relpath,
+                "image_sha256": img_sha256,
+                "predicted_slug": predicted_slug,
+                "latency_ms": latency_ms,
+            }
+            out_f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            out_f.flush()
+
+    return correct, total, latencies
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Тест точности и производительности VINA Scanner")
+    parser.add_argument("--run", type=str, default="1", choices=["1", "2"], help="Номер прогона заказчика (1: каталожные, 2: полевые)")
+    parser.add_argument("--mode", type=str, default="direct", choices=["direct", "http"], help="Режим: direct (локальный движок) или http (веб-сервер)")
+    parser.add_argument("--endpoint", type=str, default="http://127.0.0.1:8080/v1/eval/predict", help="HTTP эндпоинт для режима http")
+    parser.add_argument("--eval-root", type=Path, default=Path(r"D:\VINA2\owner_eval"), help="Путь к папке owner_eval")
+    args = parser.parse_args()
+
+    pack_dir = args.eval_root / args.run
+    manifest_path = pack_dir / "queries.tsv"
+    mapping_path = pack_dir / "mapping.json"
+    images_dir = pack_dir / "queries"
+
+    output_dir = Path(r"D:\VINA\eval_results") / args.run
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "predictions_vina.jsonl"
+
+    print("=" * 80)
+    print(f"      ТЕСТ СИСТЕМЫ РАСПОЗНАВАНИЯ VINA SCANNER (ПРОГОН {args.run})")
+    print("=" * 80)
+    print(f"• Режим тестирования: {args.mode.upper()}")
+    print(f"• Пакет данных      : {pack_dir}")
+    print(f"• Папка с фото      : {images_dir}")
+    print(f"• Манифест          : {manifest_path}")
+    print(f"• Результат         : {output_path}")
+    print("=" * 80)
+
+    if not manifest_path.is_file() or not images_dir.is_dir():
+        print(f"ОШИБКА: Тестовые файлы не найдены в {pack_dir}", file=sys.stderr)
+        return 1
+
+    mapping = {}
+    if mapping_path.is_file():
+        m_data = json.loads(mapping_path.read_text(encoding="utf-8"))
+        mapping = {c["query_id"]: c.get("expected_slug") for c in m_data.get("cases", [])}
+
+    queries = []
+    for line in manifest_path.read_text(encoding="utf-8").splitlines()[1:]:
+        line = line.strip()
+        if line:
+            parts = line.split("\t")
+            if len(parts) >= 2:
+                queries.append((parts[0].strip(), parts[1].strip()))
+
+    t_start = time.perf_counter()
+    if args.mode == "http":
+        correct, total, latencies = run_http_eval(queries, images_dir, args.endpoint, output_path, mapping)
+    else:
+        correct, total, latencies = run_direct_eval(queries, images_dir, output_path, mapping)
+
+    total_time = time.perf_counter() - t_start
+    pct = (correct / total * 100.0) if total > 0 else 0.0
+    avg_lat = sum(latencies) / len(latencies) if latencies else 0.0
+
+    print("\n" + "=" * 80)
+    print(f" ИТОГОВЫЕ РЕЗУЛЬТАТЫ VINA SCANNER (ПРОГОН {args.run}):")
+    print("=" * 80)
+    print(f"• Режим           : {args.mode.upper()}")
+    print(f"• Файл ответов    : {output_path}")
+    print(f"• Всего запросов  : {total}")
+    print(f"• Точность Hit@1  : {correct}/{total} ({pct:.1f}%)")
+    print(f"• Время отклика   : среднее {avg_lat:.0f} ms (мин: {min(latencies)} ms, макс: {max(latencies)} ms)")
+    print(f"• Общее время     : {total_time:.1f} с")
+    print("=" * 80 + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
+```
+Шаг 5
+Чтение файла
+catalog.py
+[Файл D:\VINA\pipeline\catalog.py успешно прочитан. Содержимое]:
+```
+import csv
+import os
+import glob
+import re
+
+class WineCatalog:
+    def __init__(self, csv_path: str = r"D:\VINA\data\wines_integrated.csv", uploads_dir: str = r"D:\VINA\media"):
+        """
+        Инициализация каталога вин.
+        Автоматически определяет современную базу 2 037 товаров (как в VINA2 / LCT2026),
+        либо откатывается к Strapi CSV при необходимости.
+        """
+        self.csv_path = csv_path
+        self.uploads_dir = uploads_dir
+        self.wines_by_slug = {}
+        self.upload_files = {}
+
+        # 1. Проверяем наличие полной базы 2037 товаров
+        full_json = r"D:\VINA\data\products_catalog.json"
+        full_csv = r"D:\VINA\data\wines_integrated.csv"
+        media_products = r"D:\VINA\media\products"
+
+        if os.path.isfile(full_json) and os.path.isdir(media_products):
+            self._load_full_catalog(full_json, full_csv, media_products)
+        else:
+            self._index_uploads()
+            self._load_legacy_catalog()
+
+    def _load_full_catalog(self, json_path: str, csv_path: str, media_dir: str):
+        print(f"[WineCatalog] Быстрая загрузка полной базы из {json_path}...")
+        import json
+        with open(json_path, "r", encoding="utf-8") as f:
+            products = json.load(f)
+
+        df_by_slug = {}
+        if os.path.isfile(csv_path):
+            try:
+                import pandas as pd
+                df = pd.read_csv(csv_path)
+                df_by_slug = {r['Slug']: r for _, r in df.iterrows() if pd.notna(r.get('Slug'))}
+            except Exception as e:
+                print(f"[WineCatalog] Предупреждение при чтении {csv_path}: {e}")
+
+        for p in products:
+            slug = p.get("slug")
+            if not slug:
+                continue
+
+            extra = df_by_slug.get(slug, {})
+            prod_id = p.get("id")
+            src_path = os.path.join(media_dir, prod_id, "source.webp")
+            lbl_path = os.path.join(media_dir, prod_id, "label.webp")
+
+            self.wines_by_slug[slug] = {
+                "name": str(extra.get("Название вина") or p.get("title") or slug),
+                "winery": str(extra.get("Винодельня") or p.get("manufacturer") or ""),
+                "category": str(extra.get("Категория") or ""),
+                "color": str(extra.get("Цвет") or ""),
+                "region": str(extra.get("Регион") or ""),
+                "grape": str(extra.get("Сорт винограда") or ""),
+                "description": str(extra.get("Описание") or p.get("description") or ""),
+                "slug": slug,
+                "image_path": src_path if os.path.isfile(src_path) else "",
+                "label_path": lbl_path if os.path.isfile(lbl_path) else "",
+            }
+
+        print(f"[WineCatalog] Успешно загружено {len(self.wines_by_slug)} вин с полными метаданными и изображениями.")
+
+    def _index_uploads(self):
+        if not os.path.exists(self.uploads_dir):
+            return
+            
+        for root, _, files in os.walk(self.uploads_dir):
+            for file in files:
+                if file.lower().endswith(('.webp', '.png', '.jpg', '.jpeg')):
+                    if file.startswith(('thumbnail_', 'small_', 'medium_', 'large_')):
+                        continue
+                    self.upload_files[file] = os.path.join(root, file)
+
+    def _clean_str(self, s: str) -> str:
+        return re.sub(r'[^a-z0-9]', '', s.lower())
+
+    def _find_image_path(self, photo_name: str, slug: str) -> str:
+        if not photo_name:
+            return ""
+        if photo_name in self.upload_files:
+            return self.upload_files[photo_name]
+        name_without_ext = os.path.splitext(photo_name)[0]
+        for file_name, full_path in self.upload_files.items():
+            if file_name.startswith(name_without_ext):
+                return full_path
+        for file_name, full_path in self.upload_files.items():
+            if file_name.startswith(slug) or file_name.startswith(slug.replace('-', '_')):
+                return full_path
+        clean_slug = self._clean_str(slug)
+        for file_name, full_path in self.upload_files.items():
+            clean_file = self._clean_str(os.path.splitext(file_name)[0])
+            if clean_file[:-10] == clean_slug or clean_slug in clean_file:
+                return full_path
+        return ""
+
+    def _load_legacy_catalog(self):
+        if not os.path.exists(self.csv_path):
+            return
+        with open(self.csv_path, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            headers = next(reader)
+            for row in reader:
+                if len(row) < 9:
+                    continue
+                slug = row[7].strip()
+                if not slug:
+                    continue
+                photo_name = row[8].strip()
+                image_path = self._find_image_path(photo_name, slug)
+                self.wines_by_slug[slug] = {
+                    "name": row[0].strip(),
+                    "category": row[1].strip(),
+                    "color": row[2].strip(),
+                    "region": row[3].strip(),
+                    "grape": row[4].strip(),
+                    "description": row[5].strip(),
+                    "winery": row[6].strip(),
+                    "slug": slug,
+                    "photo_name_csv": photo_name,
+                    "image_path": image_path
+                }
+
+    def get_wine(self, slug: str) -> dict:
+        return self.wines_by_slug.get(slug)
+
+    def get_all_wines(self) -> list:
+        return list(self.wines_by_slug.values())
+
+    def get_wines_with_images(self) -> list:
+        return [w for w in self.wines_by_slug.values() if w.get("image_path")]
+
+```
+Шаг 6
+Чтение файла
+search_engine.py
+[Файл D:\VINA\pipeline\search_engine.py успешно прочитан. Содержимое]:
+```
+import os
+import torch
+import numpy as np
+import faiss
+import open_clip
+from PIL import Image
+import cv2
+import pickle
+import time
+
+class WineSearchEngine:
+    def __init__(self, catalog, use_gpu: bool = True, index_path: str = "D:\\VINA\\models\\siglip2_index.faiss"):
+        """
+        Поисковый движок на базе SigLIP 2 и FAISS.
+        :param catalog: Экземпляр WineCatalog
+        :param use_gpu: Использовать ли GPU для инференса и faiss
+        :param index_path: Путь для сохранения/загрузки построенного faiss-индекса
+        """
+        self.catalog = catalog
+        self.use_gpu = use_gpu and torch.cuda.is_available()
+        self.device = "cuda:0" if self.use_gpu else "cpu"
+        self.index_path = index_path
+        self.model_name = "ViT-B-16-SigLIP2-384"
+        self.pretrained = "webli"
+        
+        print(f"[SearchEngine] Загрузка модели {self.model_name} на {self.device}...")
+        t0 = time.time()
+        self.model, _, self.preprocess = open_clip.create_model_and_transforms(
+            self.model_name, 
+            pretrained=self.pretrained, 
+            device=self.device
+        )
+        self.model.eval()
+        print(f"[SearchEngine] Модель загружена за {time.time()-t0:.1f}с")
+        
+        self.index = None
+        self.slugs = []  # Маппинг id в faiss -> slug вина
+        self.meta_path = self.index_path.replace('.faiss', '_meta.pkl')
+        
+        # Попытка загрузить существующий индекс
+        if os.path.exists(self.index_path) and os.path.exists(self.meta_path):
+            self._load_index()
+        else:
+            self._build_index()
+
+    def get_embedding(self, image: Image.Image) -> np.ndarray:
+        """Получение L2-нормализованного вектора изображения."""
+        img_tensor = self.preprocess(image).unsqueeze(0).to(self.device)
+        with torch.no_grad(), torch.cuda.amp.autocast(enabled=self.use_gpu):
+            features = self.model.encode_image(img_tensor)
+            features = features / features.norm(dim=-1, keepdim=True)
+        return features.cpu().numpy().astype(np.float32)
+
+    def _build_index(self):
+        """Проходит по каталогу, извлекает embeddings и строит FAISS индекс."""
+        print("[SearchEngine] Построение FAISS индекса...")
+        wines = self.catalog.get_wines_with_images()
+        if not wines:
+            print("[SearchEngine] В каталоге нет вин с изображениями!")
+            return
+            
+        embeddings = []
+        self.slugs = []
+        
+        for idx, wine in enumerate(wines):
+            try:
+                img = Image.open(wine["image_path"]).convert("RGB")
+                emb = self.get_embedding(img)
+                embeddings.append(emb[0])
+                self.slugs.append(wine["slug"])
+                
+                if (idx + 1) % 100 == 0:
+                    print(f"  Обработано {idx+1}/{len(wines)} изображений...")
+            except Exception as e:
+                print(f"[SearchEngine] Ошибка при обработке {wine['image_path']}: {e}")
+                
+        if not embeddings:
+            return
+            
+        emb_matrix = np.vstack(embeddings)
+        d = emb_matrix.shape[1]
+        
+        # Используем Inner Product (Cosine similarity так как векторы L2-нормализованы)
+        self.index = faiss.IndexFlatIP(d)
+        self.index.add(emb_matrix)
+        print(f"[SearchEngine] Индекс построен. Векторов: {self.index.ntotal}, размерность: {d}")
+        
+        # Сохранение
+        os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
+        faiss.write_index(self.index, self.index_path)
+        with open(self.meta_path, 'wb') as f:
+            pickle.dump(self.slugs, f)
+
+    def _load_index(self):
+        """Загружает сохраненный индекс FAISS."""
+        print(f"[SearchEngine] Загрузка FAISS индекса из {self.index_path}...")
+        self.index = faiss.read_index(self.index_path)
+            
+        with open(self.meta_path, 'rb') as f:
+            self.slugs = pickle.load(f)
+        print(f"[SearchEngine] Индекс загружен (размер: {self.index.ntotal}).")
+
+    def search_by_cv2_image(self, bgr_img: np.ndarray, top_k: int = 5):
+        """
+        Ищет наиболее похожие вина по изображению cv2 (BGR).
+        Возвращает список dict'ов с 'slug', 'score', 'wine_data'.
+        """
+        if self.index is None or self.index.ntotal == 0:
+            return []
+            
+        rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
+        pil_img = Image.fromarray(rgb_img)
+        emb = self.get_embedding(pil_img)
+        
+        # FAISS search (запрашиваем с запасом для дедупликации вин с несколькими векторами)
+        k_search = min(top_k * 4, self.index.ntotal)
+        scores, indices = self.index.search(emb, k_search)
+
+        results = []
+        seen_slugs = set()
+
+        for i in range(k_search):
+            idx = indices[0][i]
+            score = float(scores[0][i])
+            if idx < 0 or idx >= len(self.slugs):
+                continue
+
+            slug = self.slugs[idx]
+            if slug in seen_slugs:
+                continue
+            seen_slugs.add(slug)
+
+            wine_data = self.catalog.get_wine(slug)
+            results.append({
+                "slug": slug,
+                "score": score,  # Cosine similarity (-1 to 1)
+                "wine_data": wine_data
+            })
+
+            if len(results) >= top_k:
+                break
+
+        return results
+
+```
+Шаг 7
+Чтение файла
+Запуск VINA Studio.bat
+[Файл D:\VINA\Запуск VINA Studio.bat успешно прочитан. Содержимое]:
+```
+@echo off
+cd /d "%~dp0"
+call start_app.bat
+
+```
+Шаг 8
+Чтение файла
+start_app.bat
+[Файл D:\VINA\start_app.bat успешно прочитан. Содержимое]:
+```
+@echo off
+setlocal
+cd /d "%~dp0"
+
+title VINA Studio - Cylindrical Dewarp and OCR (RTX 3090)
+
+echo ======================================================================
+echo           VINA Studio: Cylindrical Dewarp and Search System
+echo ======================================================================
+echo.
+
+rem Check if port 8080 is already active
+netstat -ano | findstr 127.0.0.1:8080 | findstr LISTENING >nul
+if %ERRORLEVEL% EQU 0 (
+    echo [INFO] VINA server is already active on http://127.0.0.1:8080
+    echo Opening browser...
+    start http://127.0.0.1:8080
+    echo.
+    pause
+    exit /b 0
+)
+
+echo [1/2] Checking Python environment...
+python --version
+if %ERRORLEVEL% NEQ 0 (
+    echo [ERROR] Python was not found in PATH!
+    pause
+    exit /b 1
+)
+
+echo.
+echo [2/2] Loading neural networks into RTX 3090 VRAM...
+echo       YOLOv8-seg, SAM, PP-OCRv4, EasyOCR, SigLIP2, FAISS catalog
+echo.
+echo       Please wait 8-10 seconds.
+echo       The browser (http://127.0.0.1:8080) will open AUTOMATICALLY
+echo       as soon as the server is ready!
+echo.
+echo ======================================================================
+echo To stop the server, press Ctrl+C or close this window.
+echo ======================================================================
+echo.
+
+python -u app.py
+
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo [ERROR] Server terminated with error.
+    pause
+)
+
+```
+Шаг 9
+Чтение файла
+confidence_boost_plan.md
+[Файл D:\VINA\confidence_boost_plan.md успешно прочитан. Содержимое]:
+```
+# План: Повышение точности через OCR-pipeline при Уверенности < 80%
+
+## Идея
+
+Когда **DINOv2 + SIFT дают `dino_similarity < 0.80`** — визуального совпадения недостаточно.  
+Запускается **второй проход**: OCR-пайплайн читает текст с этикетки,  
+извлекает теги (название, винодельня, цвет, регион, сорт, %, год),  
+и переранжирует кандидатов по совпадению тегов.
+
+---
+
+## Как работает сейчас (основной пайплайн)
+
+```
+Фото → YOLO-детектор → crop этикетки
+     → DINOv2 embedding
+     → pgvector ближайшие N кандидатов
+     → SIFT переранжирование
+     → топ-1 результат + dino_similarity
+```
+
+**Проблема:** при плохом освещении, повороте, бликах `dino_similarity` может падать  
+ниже 0.80 даже при правильном ответе. SIFT тоже может не найти достаточно точек.
+
+---
+
+## Новый поток при Уверенность < 80%
+
+```
+Фото → dino_similarity < 0.80?
+     ├── НЕТ → стандартный результат
+     └── ДА  → OCR Confidence Boost Pipeline
+                     │
+                     ▼
+           [Stage1] Препроцессинг + dewarp
+                (коррекция перспективы, CLAHE,
+                 unsharp mask — уже есть в VINA/pipeline/)
+                     │
+                     ▼
+           [Stage5] OCR с двойным движком
+                (RapidOCR PP-OCRv4 + EasyOCR RU+EN)
+                + WineVocabularyCorrector
+                     │
+                     ▼
+           Извлечение тегов (TagBundle):
+                • title_tokens: слова из текста
+                • winery: "АБРАУ-ДЮРСО", "Chateau de Talu"...
+                • color: "КРАСНОЕ", "БЕЛОЕ", "РОЗОВОЕ"
+                • category: "СУХОЕ", "ПОЛУСУХОЕ", "БРЮТ"...
+                • region: "КРЫМ", "КУБАНЬ", "CAHORS"...
+                • grape: "КАБЕРНЕ", "МЕРЛО", "СОВИНЬОН"...
+                • year: 2021, 2022...
+                • alcohol: 13.5%
+                     │
+                     ▼
+           Тег-скоринг кандидатов из pgvector-топа:
+                score_tag = сумма по весам:
+                  • совпадение winery   → w=3.0
+                  • совпадение title    → w=2.5 (fuzzy, порог 0.75)
+                  • совпадение color    → w=1.5
+                  • совпадение region   → w=1.5
+                  • совпадение grape    → w=1.5
+                  • совпадение category → w=1.0
+                  • совпадение year     → w=0.5
+                     │
+                     ▼
+           Финальный score = (dino_similarity * 0.5) + (tag_score_norm * 0.5)
+                     │
+                     ▼
+           Новый топ-1 + пересчёт Уверенности:
+                confidence = min(0.95, final_score)
+```
+
+---
+
+## Расчёт итоговой Уверенности
+
+```python
+CONFIDENCE_THRESHOLD = 0.80
+
+def compute_confidence(result: SearchResult) -> float:
+    """
+    Базовая Уверенность из визуального поиска.
+    Смешиваем dino_similarity и нормированный sift_score.
+    """
+    dino = result.dino_similarity          # 0.0 – 1.0
+    sift = min(result.sift_score, 1.0)    # нормируем (уже 0..1)
+    return round(dino * 0.7 + sift * 0.3, 3)
+
+def apply_ocr_boost(base_conf: float, tag_score: float) -> float:
+    """
+    Повышаем уверенность за счёт тегов.
+    tag_score — сумма весов совпавших тегов, max_possible = 11.5
+    """
+    tag_norm = min(tag_score / 11.5, 1.0)
+    return round(base_conf * 0.5 + tag_norm * 0.5, 3)
+```
+
+---
+
+## Компоненты реализации (файлы)
+
+### Backend — `D:\VINA2\lct2026prod`
+
+| Файл | Что меняется |
+|------|--------------|
+| `app/schemas/search/v1.py` | Добавить поле `confidence: float` в `SearchResult` |
+| `app/pipelines/search/v1/pipeline.py` | Вычислять `confidence`, при < 0.80 запускать OCR-boost |
+| **[NEW]** `app/pipelines/ocr/stage5_ocr.py` | Перенести `Stage5OCRDecoder` из VINA |
+| **[NEW]** `app/pipelines/ocr/wine_lexicon.py` | Перенести `WineVocabularyCorrector` из VINA |
+| **[NEW]** `app/pipelines/ocr/tag_scorer.py` | `TagScorer` — извлечение TagBundle + скоринг |
+| `app/core/dependencies.py` | Инициализировать OCR-движок как singleton |
+| `app/schemas/search/v1.py` | Добавить `ocr_tags: dict | None = None` для отладки |
+
+### Frontend — `D:\VINA2\lct2026prod\web`
+
+| Файл | Что меняется |
+|------|--------------|
+| `web/app.js` | Читать `item.confidence` из ответа API |
+| `web/index.html` | Индикатор "🔍 Анализируем этикетку..." при низкой уверенности |
+
+---
+
+## Детали алгоритма тег-скоринга (`TagScorer`)
+
+```python
+class TagBundle:
+    title_tokens: list[str]   # токены слов с этикетки
+    winery: str | None        # название винодельни
+    color: str | None         # цвет вина
+    category: str | None      # тип (сухое, полусухое...)
+    region: str | None        # регион
+    grape: str | None         # сорт
+    year: int | None          # год урожая
+    alcohol: float | None     # крепость
+
+def score_candidate(bundle: TagBundle, product: Product) -> float:
+    score = 0.0
+
+    # Нечёткое совпадение токенов названия
+    if bundle.title_tokens:
+        ratio = fuzzy_token_overlap(bundle.title_tokens, product.title)
+        if ratio > 0.6:
+            score += 2.5 * ratio
+
+    # Строгие теговые поля
+    if bundle.winery and fuzzy_match(bundle.winery, product.manufacturer) > 0.75:
+        score += 3.0
+    if bundle.color and normalize(bundle.color) == normalize(product.color):
+        score += 1.5
+    if bundle.region and fuzzy_match(bundle.region, product.region) > 0.7:
+        score += 1.5
+    if bundle.grape and fuzzy_match(bundle.grape, product.grape) > 0.7:
+        score += 1.5
+    if bundle.category and normalize(bundle.category) == normalize(product.category):
+        score += 1.0
+    if bundle.year and str(bundle.year) in (product.description or ""):
+        score += 0.5
+
+    return score
+```
+
+---
+
+## Этапы выполнения
+
+- `[ ]` **Шаг 1 — Backend:** Добавить `confidence: float` в `SearchResult` и вычислять в `pipeline.py`
+- `[ ]` **Шаг 2 — Frontend:** Обновить `app.js` для чтения поля `confidence` из API (уже сделано частично)
+- `[ ]` **Шаг 3 — OCR-модуль:** Перенести `Stage5OCRDecoder` + `WineVocabularyCorrector` из VINA в lct2026prod
+- `[ ]` **Шаг 4 — TagScorer:** Реализовать `TagBundle` + функцию скоринга
+- `[ ]` **Шаг 5 — Интеграция:** В `pipeline.py` добавить условие `if base_confidence < 0.80: run_ocr_boost()`
+- `[ ]` **Шаг 6 — Тест:** Трудные случаи (боковые снимки, блики, мятые этикетки)
+- `[ ]` **Шаг 7 — Тюнинг весов:** Откалибровать веса на тестовом датасете
+
+---
+
+## Почему это работает
+
+| Случай | Что даёт OCR-boost |
+|--------|-------------------|
+| Боковой снимок | DINO слабый, но название/регион на этикетке читаемы |
+| Блики | Часть этикетки перекрыта, но текст вокруг сохранён |
+| Сходные этикетки (один производитель, разный сорт) | Цвет/сорт из OCR прямо отсекают неправильного кандидата |
+| Нестандартные ракурсы | Dewarp выравнивает, OCR потом корректно читает |
+
+---
+
+## Производительность
+
+- `Stage5OCRDecoder` тяжёлый (EasyOCR + RapidOCR) — инициализируется **один раз** при старте.
+- OCR-проход добавляет **~300–800 мс** (только при confidence < 0.80, не всегда).
+- Рекомендуется: таймаут 2000 мс с graceful fallback к исходному результату.
+
+---
+
+## Ресурсы в VINA (переносятся без изменений)
+
+| Файл | Назначение |
+|------|------------|
+| `pipeline/stage5_ocr.py` | OCR engine (RapidOCR + EasyOCR + CLAHE) |
+| `pipeline/stage1_preprocessing.py` | Dewarp, perspective correction |
+| `pipeline/wine_lexicon_corrector.py` | Словари + fuzzy-коррекция OCR-артефактов |
+| `pipeline/catalog.py` | Структура тегов каталога (цвет, сорт, регион) |
+
+```
+Шаг 10
+Чтение файла
+__init__.py
+[Файл D:\VINA\pipeline\__init__.py успешно прочитан. Содержимое]:
+```
+"""
+Cylindrical Dewarping & OCR Pipeline Package
+"""
+
+from .dewarp_engine import CylindricalDewarpEngine
+from .multi_label_engine import MultiLabelBottleEngine, BottleResult, LabelResult
+from .metrics import compute_image_metrics, character_error_rate, levenshtein_distance, jaro_winkler_similarity
+
+__all__ = [
+    "CylindricalDewarpEngine",
+    "MultiLabelBottleEngine",
+    "BottleResult",
+    "LabelResult",
+    "compute_image_metrics",
+    "character_error_rate",
+    "levenshtein_distance",
+    "jaro_winkler_similarity"
+]
+
+```
+Шаг 11
+Список файлов в папке
+data
+[Директория D:\VINA\data прочитана. Список элементов]:
+- [FILE] products_catalog.csv (1976492 байт)
+- [FILE] products_catalog.json (809089 байт)
+- [FILE] wines_integrated.csv (2354752 байт)
+Шаг 12
+Выполнение команды
+python -c \"import json; d=json.load(open(r'D:\VINA\data\products_catalog.json',encoding='utf-8')); print(len(d)); print(json.dumps(d[0],ensure_ascii=False,indent=2))\"
+[Команда выполнена с кодом 1]:
+```
+  File "<string>", line 1
+    "import
+    ^
+SyntaxError: unterminated string literal (detected at line 1)
+
+```
+Шаг 13
+Создание/запись файла
+_inspect_data.py
+12 строк
+[Файл успешно записан: D:\VINA\scratch\_inspect_data.py (Размер: 414 байт)]
+Шаг 14
+Выполнение команды
+python D:\VINA\scratch\_inspect_data.py
+[Команда завершилась по таймауту (30 секунд). Процесс остановлен]
+Шаг 15
+Выполнение команды
+python -X utf8 D:\VINA\scratch\_inspect_data.py
+Now I understand the project structure. Let me look at the test data to understand what the OCR tags look like and how the catalog is structured.
+
+Let me understand the task:
+
+The user wants to connect the VINA STUDIO cascade to the scanner. Before returning the result in the scanner:
+1. "Под капотом" (under the hood) connect VINA STUDIO
+2. After getting the OSR (OCR) tags, correct them using a dictionary created from the database classes - "Название" (Name) and "slug" - the dictionary should include each word in Latin and Cyrillic
+3. Then find by "slug" in the database which id has the most matches
+4. Then a process of comparing confidence by scanner embedding and VINA studio confidence - the id with higher confidence is chosen and returned
+5. When there is a full match of at least 3 tags/words in the OCR result, VINA STUDIO confidence = 100%
+6. Overall confidence is the sum of all % divided by 2, issued as the final "Уверенность" (Confidence) on the scanner front
+
+Let me re-read the task carefully:
+
+"Хочу подключить каскад VINA STUDIO к сканеру. Перед выдачей результата в сканере под капотом подключаем VINA STUDIO, после чего полученные после osr тэги исправляем с помощью словаря созданного из классов базы - "Название" и "slug" - в словарь должны входить каждого слова на латинице и на кириллице, затем находим по базе по "slug" на каком id наибольшее совпадение. После чего идет процесс сравнение уверенностей по эмбендингу сканера и уверенностью vina studio - выбирается и выдается id чья уверенность будет выше. При полном совпадении минимум 3х тэгов/слов в результате osr Уверенность VINA STUDIO равна 100%. Общая уверенность это сумма всех % деленная на 2, выдается как итоговая "Уверенность" на фронте сканера."
+
+Translation:
+"I want to connect the VINA STUDIO cascade to the scanner. Before issuing the result in the scanner, under the hood we connect VINA STUDIO, after which the tags obtained after OCR are corrected using a dictionary created from the database classes - "Название" (Name) and "slug" - the dictionary must include each word in Latin and Cyrillic, then we find by "slug" in the database on which id the match is greatest. After that there is a process of comparing the confidence of the scanner embedding and the VINA studio confidence - the id whose confidence is higher is chosen and issued. When there is a full match of at least 3 tags/words in the OCR result, the VINA STUDIO confidence equals 100%. The overall confidence is the sum of all % divided by 2, issued as the final "Confidence" on the scanner front."
+
+So the flow is:
+1. Scanner gets a photo
+2. Scanner does embedding search (SigLIP2 + FAISS) → gets top candidates with confidence (embedding score)
+3. Under the hood, VINA STUDIO runs (the full dewarp + OCR pipeline) → gets OCR tags/words
+4. Correct the OCR tags using a dictionary built from the database "Название" (Name) and "slug" fields - each word in both Latin and Cyrillic
+5. Find by "slug" in the database which id has the most matches (i.e., match OCR words against the database names/slugs, find which product id matches most)
+6. Compare the scanner embedding confidence and the VINA studio confidence - choose the id with the higher confidence
+7. If at least 3 tags/words fully match in the OCR result, VINA STUDIO confidence = 100%
+8. Overall confidence = sum of all % divided by 2, issued as final "Confidence" on the scanner front
+
+Let me think about the architecture:
+
+Currently:
+- `/v1/eval/predict` in app.py does `search_engine.search_by_cv2_image(img_bgr, top_k=1)` and returns `{"slug": ..., "score": ..., "confidence": ...}`
+- The scanner front (scanner.js) calls `/v1/eval/predict` and displays the wine card + confidence
+
+So I need to modify `/v1/eval/predict` (or the search flow) to:
+1. Do the embedding search (scanner) → get top candidates with scores
+2. Run VINA STUDIO (dewarp + OCR) → get OCR text/words
+3. Build a dictionary from the database (Название + slug) with each word in Latin and Cyrillic
+4. Match OCR words against the dictionary / database to find the best matching product id
+5. Compute VINA STUDIO confidence based on matches (100% if ≥3 tags fully match)
+6. Compare the two confidences (embedding vs VINA studio) and choose the id with higher confidence
+7. Compute overall confidence = (embedding_confidence + vina_studio_confidence) / 2
+8. Return the chosen id/slug + overall confidence
+
+Let me think about the details:
+
+**Dictionary building:**
+From the database, take "Название" (Name) and "slug" for each product. Tokenize each into words. For each word, include both the Latin version and the Cyrillic version. 
+
+Wait, "в словарь должны входить каждого слова на латинице и на кириллице" - the dictionary must include each word in Latin and Cyrillic. This means for matching, we should normalize words so that a Latin "TEMPRANILLO" matches a Cyrillic "ТЕМПРАНИЛЬО". So we need a transliteration mapping.
+
+Actually, I think the idea is:
+- The database has names in Cyrillic (e.g., "Автохтонное Вино Крыма белое сухое") and slugs in Latin (e.g., "avtohtonnoe-vino-kryma-beloe-suhoe")
+- The OCR might return text in either Cyrillic or Latin
+- To match OCR words against the database, we need to normalize all words to a common form (or have both forms in the dictionary)
+
+So the dictionary maps: for each product, a set of normalized words (both the Latin slug words and the Cyrillic name words, plus transliterations of one to the other).
+
+Let me think about the matching:
+- OCR produces words (tags), e.g., "ТЕМПРАНИЛЬО", "КАБЕРНЕ", "СУХОЕ", "КРАСНОЕ"
+- For each database product, we have name words (Cyrillic) and slug words (Latin)
+- We match OCR words against each product's word set
+- Count matches per product
+- The product with the most matches is the VINA STUDIO candidate
+
+**VINA STUDIO confidence:**
+- If ≥3 tags/words fully match → 100%
+- Otherwise, some partial score based on match ratio
+
+Let me re-read: "При полном совпадении минимум 3х тэгов/слов в результате osr Уверенность VINA STUDIO равна 100%."
+"When there is a full match of at least 3 tags/words in the OCR result, VINA STUDIO confidence = 100%."
+
+So if at least 3 OCR words match the database product's words fully, VINA STUDIO confidence = 100%.
+
+What if fewer than 3 match? Then presumably a lower confidence proportional to the matches. Let me define: vina_studio_confidence = (matched_words / total_ocr_words) * 100, but if matched >= 3, then 100%.
+
+Actually let me reconsider. The confidence should reflect how confident VINA STUDIO is about the identified product. 
+
+Let me think about the overall confidence:
+"Общая уверенность это сумма всех % деленная на 2" - The overall confidence is the sum of all % divided by 2.
+
+So overall_confidence = (embedding_confidence + vina_studio_confidence) / 2.
+
+**Choosing the id:**
+"идет процесс сравнение уверенностей по эмбендингу сканера и уверенностью vina studio - выбирается и выдается id чья уверенность будет выше"
+"there is a process of comparing the confidence of the scanner embedding and the VINA studio confidence - the id whose confidence is higher is chosen and issued"
+
+So:
+- Scanner embedding gives a candidate id (slug) + confidence (embedding score)
+- VINA STUDIO gives a candidate id (slug) + confidence (based on tag matches)
+- Compare the two confidences, choose the id with the higher confidence
+
+Wait, but these might be the same id or different ids. If the embedding says product A with 0.85 and VINA studio says product B with 0.90, we choose product B.
+
+Hmm, but actually I think the comparison is: the scanner embedding has a top candidate (slug_scanner, conf_scanner). VINA studio has a top candidate (slug_vina, conf_vina). We compare conf_scanner vs conf_vina. If conf_vina > conf_scanner, we use slug_vina; else we use slug_scanner.
+
+Then overall confidence = (conf_scanner + conf_vina) / 2.
+
+Let me now think about how to compute the embedding confidence. Currently `search_by_cv2_image` returns `score` which is cosine similarity in [-1, 1]. For SigLIP, the scores for a real match might be around 0.7-0.9. Let me check what range the scores are in.
+
+Actually, the current code returns `confidence: round(score, 4)` where score is the cosine similarity. This is a raw value, not a percentage. But the front end `setConfidence` handles it: `if (score <= 1.0 && score >= 0) val = score * 100`. So it treats it as 0-1 and multiplies by 100.
+
+For the new logic, I need to convert the embedding score to a 0-100 confidence. The cosine similarity from SigLIP can range from -1 to 1, but for actual wine matches it's typically positive. I should normalize it. Let me think about a reasonable mapping.
+
+Actually, let me look at what scores the FAISS search returns. Let me run a quick test to see the actual score values.
+
+Let me also check the test data structure to understand the OCR output.
+
+Let me first look at the test_dataset and owner_eval data.
+
+Let me check:
+- D:\VINA2\owner_eval - does it exist?
+- D:\VINA\test_dataset - contents
+
+Let me run these checks.
+
+Actually, I already ran a command but it seems the output got cut off. Let me re-run to check VINA2 and test_dataset.
+
+Let me be systematic. Let me check the test data and the actual FAISS scores.
+
+Let me plan the implementation:
+
+**New module: `pipeline/vina_studio_cascade.py`** (or add to a new file)
+
+This module will:
+1. Build the dictionary from the catalog (Название + slug), with each word in Latin and Cyrillic (transliteration)
+2. Given OCR text/words, match against the database to find the best product
+3. Compute VINA studio confidence
+
+**Transliteration:**
+I need a Cyrillic↔Latin transliteration. Python has `transliterate` or I can use `pypinyin`... no. Let me use a simple approach. There's a library `transliterate` or I can build a custom mapping.
+
+Actually, the slug is already a Latin transliteration of the Cyrillic name (e.g., "Автохтонное" → "avtohtonnoe"). So the slug words ARE the Latin versions of the name words. 
+
+So for each product:
+- name (Cyrillic) → tokenize → Cyrillic words
+- slug (Latin) → tokenize → Latin words
+
+The dictionary should include both. So when OCR produces "Автохтонное" (Cyrillic), it matches the name words. When OCR produces "avtohtonnoe" (Latin), it matches the slug words.
+
+But the problem is OCR might produce a mix, or produce Cyrillic that doesn't exactly match the name (due to OCR errors), or produce Latin that doesn't exactly match the slug.
+
+The task says: "в словарь должны входить каждого слова на латинице и на кириллице" - the dictionary must include each word in Latin and Cyrillic.
+
+So for each word in the name, I add both the Cyrillic form and a Latin transliteration. For each word in the slug, I add both the Latin form and a Cyrillic transliteration. This way, regardless of which alphabet the OCR produces, we can match.
+
+Let me build a transliteration function. I'll create a custom Cyrillic→Latin and Latin→Cyrillic mapping that matches the style of the slugs (e.g., "а"→"a", "б"→"b", "в"→"v", "г"→"g", "д"→"d", "е"→"e", "ё"→"e", "ж"→"zh", "з"→"z", "и"→"i", "й"→"y", "к"→"k", "л"→"l", "м"→"m", "н"→"n", "о"→"o", "п"→"p", "р"→"r", "с"→"s", "т"→"t", "у"→"u", "ф"→"f", "х"→"h", "ц"→"ts", "ч"→"ch", "ш"→"sh", "щ"→"shch", "ъ"→"", "ы"→"y", "ь"→"", "э"→"e", "ю"→"yu", "я"→"ya").
+
+Let me verify with the example: "Автохтонное" 
+- А→a, в→v, т→t, о→o, х→h, т→t, о→o, н→n, н→n, о→o, е→e = "avtohtonnoe" ✓ 
+
+"Крыма": к→k, р→r, ы→y, м→m, а→a = "kryma" ✓
+
+"белое": б→b, е→e, л→l, о→o, е→e = "beloe" ✓
+
+"сухое": с→s, у→u, х→h, о→o, е→e = "suhoe" ✓
+
+So the slug is "avtohtonnoe-vino-kryma-beloe-suhoe" which matches "Автохтонное Вино Крыма белое сухое". 
+
+So my transliteration mapping is correct.
+
+Now, for matching, I'll normalize each word (strip punctuation, lowercase) and create a canonical key. To match across alphabets, I'll transliterate everything to a single canonical form (e.g., all to Latin lowercase). Then:
+- For each product, build a set of canonical words from name (transliterated to Latin) + slug (already Latin)
+- For each OCR word, transliterate to Latin canonical form
+- Match OCR canonical words against product canonical word sets
+
+Wait, but there's a subtlety. The task says the dictionary should include each word in both Latin and Cyrillic. This is because OCR might produce either. By normalizing everything to a single canonical Latin form, I effectively handle both. But to be safe and match the task description, I'll store both forms in the dictionary and normalize OCR words to match.
+
+Now I understand the full architecture. Let me think about the task.
+
+The user wants to connect the VINA STUDIO cascade to the scanner. Let me re-read the task:
+
+"Хочу подключить каскад VINA STUDIO к сканеру. Перед выдачей результата в сканере под капотом подключаем VINA STUDIO, после чего полученные после osr тэги исправляем с помощью словаря созданного из классов базы - "Название" и "slug" - в словарь должны входить каждого слова на латинице и на кириллице, затем находим по базе по "slug" на каком id наибольшее совпадение. После чего идет процесс сравнение уверенностей по эмбендингу сканера и уверенностью vina studio - выбирается и выдается id чья уверенность будет выше. При полном совпадении минимум 3х тэгов/слов в результате osr Уверенность VINA STUDIO равна 100%. Общая уверенность это сумма всех % деленная на 2, выдается как итоговая "Уверенность" на фронте сканера."
+
+Let me translate and break down:
+
+1. Connect VINA STUDIO cascade to the scanner.
+2. Before giving the result in the scanner, "under the hood" connect VINA STUDIO.
+3. After getting the OCR tags, we correct them using a dictionary created from the database classes - "Название" (Name) and "slug". The dictionary should include each word in Latin and in Cyrillic.
+4. Then we find in the database by "slug" which id has the greatest match.
+5. After that, we compare the confidence of the scanner's embedding with the confidence of VINA STUDIO - the id with the higher confidence is chosen and given.
+6. When there's a full match of at least 3 tags/words in the OCR result, the VINA STUDIO confidence is 100%.
+7. The overall confidence is the sum of all % divided by 2, given as the final "Confidence" on the scanner front.
+
+Let me parse this more carefully. There are two "engines":
+- The **scanner** (current one): SigLIP2 + FAISS embedding-based search. It returns a slug + score (cosine similarity, ~0 to 1).
+- **VINA STUDIO**: the CylindricalDewarpEngine which does YOLO → SAM → Dewarp → OCR. It gives OCR text/tags.
+
+So the cascade:
+1. Scanner does its embedding search → gets a candidate slug + embedding confidence (score).
+2. VINA STUDIO does OCR → gets tags/words.
+3. We build a dictionary from the database: for each wine, take "Название" (name) and "slug", split into words, include each word in both Latin and Cyrillic forms.
+4. Correct the OCR tags using this dictionary.
+5. Find in the database by slug which id has the greatest match (i.e., match the corrected OCR words against the database words, find which wine/slug has the most matches).
+6. Compute VINA STUDIO confidence: if ≥3 tags/words fully match, confidence = 100%.
+7. Compare scanner embedding confidence vs VINA STUDIO confidence → pick the id with higher confidence.
+8. Overall confidence = (scanner_conf + vina_studio_conf) / 2 → shown on front as "Уверенность".
+
+Let me think about the dictionary structure. The dictionary is created from "Название" (Name) and "slug". For each wine:
+- Name (Название вина) - e.g., "100 оттенков красного. Каберне"
+- Slug - e.g., "fanagoriya-100-ottenkov-krasnogo-kaberne-kaberne-sovinon-krasnoe-suhoe-135"
+
+The slug is a transliteration of the name into Latin. So the dictionary should include each word in both Latin (from slug) and Cyrillic (from name).
+
+So for matching, when OCR produces "каберне" (Cyrillic), we want to match it against the Cyrillic words. When OCR produces "kaberne" (Latin), we want to match it against the Latin words (from slug).
+
+Actually, the key insight: The slug contains the Latin transliteration. So we can build a mapping. For each wine, we have:
+- Cyrillic words from the name
+- Latin words from the slug
+
+And we match OCR words (which could be Cyrillic or Latin) against these.
+
+Let me think about how to compute the "match" for a given wine. For a wine with slug S:
+- Its Cyrillic words: from the name (Название)
+- Its Latin words: from the slug
+
+When we have OCR words (corrected), we count how many of them match the wine's words (both Cyrillic and Latin forms). The wine with the highest match count is the VINA STUDIO candidate.
+
+Wait, re-reading: "в словарь должны входить каждого слова на латинице и на кириллице" - the dictionary should include each word in Latin and in Cyrillic. So the dictionary is a global dictionary of all words (from all names and all slugs), each word in both Latin and Cyrillic. This dictionary is used to correct the OCR tags.
+
+Then "находим по базе по 'slug' на каком id наибольшее совпадение" - we find in the database by slug which id has the greatest match. So we match the corrected OCR words against each wine's words (the words that make up that wine's name/slug), and find which wine id has the most matches.
+
+So the algorithm:
+1. Build a global dictionary: for each wine, extract words from name (Cyrillic) and slug (Latin). Store both forms. This global dictionary is used for OCR correction (fuzzy matching OCR words to the closest known word).
+2. For each wine, store its "word set" (Cyrillic words from name + Latin words from slug).
+3. Correct OCR words using the global dictionary.
+4. For each wine, count how many of the corrected OCR words are in the wine's word set. Find the wine with the max count.
+5. VINA STUDIO confidence:
+   - If max match count ≥ 3 (at least 3 tags/words fully match), confidence = 100%.
+   - Otherwise, confidence = (match_count / total_ocr_words) * 100% or something proportional.
+6. Scanner confidence = embedding score (cosine similarity, 0 to 1 → 0 to 100%).
+7. Compare: if vina_studio_conf > scanner_conf → use VINA STUDIO's slug. Else use scanner's slug.
+8. Overall confidence = (scanner_conf + vina_studio_conf) / 2.
+
+Hmm, wait. Let me re-read: "Процесс сравнение уверенностей по эмбендингу сканера и уверенностью vina studio - выбирается и выдается id чья уверенность будет выше."
+
+So we compare:
+- Scanner embedding confidence (for the scanner's top slug)
+- VINA STUDIO confidence (for the VINA STUDIO's top slug)
+
+And pick the id (slug) whose confidence is higher.
+
+But actually, the two engines might produce the same or different slugs. The scanner produces slug A with confidence C_A. VINA STUDIO produces slug B with confidence C_B. If C_B > C_A, we output slug B; else output slug A.
+
+"Общая уверенность это сумма всех % деленная на 2" - the overall confidence is the sum of all % divided by 2. So overall = (C_A + C_B) / 2.
+
+Let me think about what "сумма всех %" means. Sum of all percentages divided by 2. So it's (scanner_conf% + vina_studio_conf%) / 2. That's the average of the two confidences.
+
+OK here's my plan. I need to:
+
+1. Create a new module `pipeline/vina_cascade.py` (or similar) that:
+   - Builds a dictionary from the database (name + slug words, both Latin and Cyrillic).
+   - Provides a method to correct OCR text using this dictionary.
+   - Provides a method to find the best-matching wine by slug based on OCR words.
+   - Computes VINA STUDIO confidence.
+
+2. Modify `app.py`'s `/v1/eval/predict` endpoint to:
+   - Run scanner embedding search (get slug + score).
+   - Run VINA STUDIO (dewarp engine) to get OCR text.
+   - Run the cascade to get VINA STUDIO's slug + confidence.
+   - Compare confidences, pick winner.
+   - Compute overall confidence.
+   - Return the result.
+
+3. The frontend already reads `data.confidence` and displays it. So I need to make sure the endpoint returns the overall confidence.
+
+Let me think about the performance. The scanner embedding search is fast (~20-25ms). But VINA STUDIO (dewarp engine) is heavy (YOLO + SAM + OCR, ~1-3 sec). The SLA is < 3 sec. Hmm. But the user wants the cascade, so let's do it. Actually, the dewarp engine's process_image is quite heavy. Let me check the timings.
+
+Actually, wait. Let me reconsider. The dewarp engine's `process_image` does the full YOLO → SAM → dewarp → OCR. That's heavy. For the scanner use case, maybe we want a lighter path. But the user explicitly says "под капотом подключаем VINA STUDIO" (under the hood connect VINA STUDIO). So we run the full VINA STUDIO pipeline.
+
+Actually, let me reconsider the OCR. The dewarp engine's `process_image` returns `full_text` and `text_blocks`. We can use the `full_text` for the cascade.
+
+Let me think about the dictionary building. We need to read the database. The catalog has `wines_by_slug` with `name` and `slug`. We can build the dictionary from there.
+
+For each wine:
+- name: e.g., "100 оттенков красного. Каберне"
+- slug: e.g., "fanagoriya-100-ottenkov-krasnogo-kaberne-kaberne-sovinon-krasnoe-suhoe-135"
+
+Cyrillic words from name: ["100", "оттенков", "красного", "Каберне"]
+Latin words from slug: ["fanagoriya", "100", "ottenkov", "krasnogo", "kaberne", "kaberne", "sovinon", "krasnoe", "suhoe", "135"]
+
+The dictionary (global) should include each word in both Latin and Cyrillic. So we build a set of all Cyrillic words (from names) and all Latin words (from slugs).
+
+For matching a wine, we use its word set: Cyrillic words (from name) + Latin words (from slug). When an OCR word comes in (corrected), we check if it's in the wine's word set.
+
+But there's a subtlety: OCR might produce "каберне" (Cyrillic) which is in the wine's Cyrillic set. Or OCR might produce "kaberne" (Latin) which is in the wine's Latin set. We should count a match if the OCR word matches EITHER the Cyrillic OR the Latin form of a wine word.
+
+Actually, to be robust, we should normalize. Let me think. The slug is the transliteration of the name. So "Каберне" → "kaberne". If we transliterate the Cyrillic words to Latin, they should match the slug words. But the slug might have slight differences (e.g., "оттенков" → "ottenkov", "красного" → "krasnogo").
+
+Hmm, this is getting complex. Let me simplify:
+
+For matching, I'll build for each wine a "normalized word set" that includes:
+- All Cyrillic words from the name (lowercased, cleaned)
+- All Latin words from the slug (lowercased, cleaned)
+- Transliterated versions of the Cyrillic words (to Latin) — so that if OCR produces Latin "kaberne", it matches the transliteration of "Каберне"
+- Transliterated versions of the Latin words (to Cyrillic) — so that if OCR produces Cyrillic "каберне", it matches the transliteration of "kaberne"
+
+Then an OCR word (after correction) matches a wine if its normalized form is in the wine's normalized word set.
+
+Actually, the simplest robust approach: normalize everything to a canonical form (e.g., lowercase Latin via transliteration). Then:
+- Wine word set (canonical): transliterate all name words to Latin + all slug words (already Latin).
+- OCR word (canonical): transliterate to Latin.
+- Match if OCR canonical word is in wine word set.
+
+This way, both Cyrillic and Latin OCR words get normalized to Latin and matched against the Latin canonical set. This handles the "each word in Latin and Cyrillic" requirement naturally.
+
+Let me write a transliteration function (Cyrillic → Latin). I'll use a standard mapping.
+
+Let me think about the confidence calculation more carefully:
+
+VINA STUDIO confidence:
+- "При полном совпадении минимум 3х тэгов/слов в результате osr Уверенность VINA STUDIO равна 100%."
+- So if at least 3 tags/words fully match → 100%.
+- Otherwise, proportional: confidence = (match_count / total_ocr_words) * 100? Or (match_count / 3) * 100 capped at 100?
+
+Let me think. If 3 matches → 100%. If 2 matches → 66.7%? If 1 match → 33%? If 0 → 0%. That seems reasonable: confidence = min(match_count / 3, 1.0) * 100.
+
+Actually, "полном совпадении минимум 3х тэгов/слов" = "full match of at least 3 tags/words". So the threshold for 100% is 3 matches. Below that, proportional to 3. So confidence = min(1.0, match_count / 3.0) * 100.
+
+Hmm, but that's a bit arbitrary. Let me reconsider. Maybe it should be based on the ratio of matched words to total OCR words. But the spec says "минимум 3х тэгов/слов" → 100%. I'll go with: if match_count >= 3 → 100%, else (match_count / 3) * 100.
+
+Actually, let me reconsider whether it's match_count/3 or match_count/total_ocr_words. The phrase "полном совпадении минимум 3х тэгов/слов" suggests the denominator for 100% is 3. So confidence = min(match_count, 3) / 3 * 100. I'll go with that.
+
+Scanner confidence:
+- The embedding score is cosine similarity, which is in [-1, 1] but typically [0, 1] for these. Actually, SigLIP scores can be negative. Let me clamp to [0, 1] and convert to percentage. So scanner_conf = max(0, min(1, score)) * 100.
+
+Wait, but cosine similarity for SigLIP image-image might not be in [0,1]. Let me check. SigLIP uses a sigmoid-based loss, so the logits are in [-1, 1] roughly, but the actual cosine similarity of normalized embeddings is in [-1, 1]. For similar images it's typically positive (0.2 to 0.8). Let me clamp to [0, 1].
+
+Actually, for the scanner, the "score" returned is the cosine similarity. Let me just clamp it to [0,1] and use as percentage.
+
+Overall confidence = (scanner_conf + vina_studio_conf) / 2.
+
+Now, the selection:
+- scanner_slug = scanner's top result slug, scanner_conf = its score.
+- vina_slug = VINA STUDIO's best match slug, vina_conf = computed.
+- If vina_conf > scanner_conf → final_slug = vina_slug.
+- Else → final_slug = scanner_slug.
+- overall_conf = (scanner_conf + vina_conf) / 2.
+
+Let me now think about where to integrate. The `/v1/eval/predict` endpoint currently:
+```python
+results = search_engine.search_by_cv2_image(img_bgr, top_k=1)
+if not results:
+    return {"slug": None, "score": 0.0, "confidence": 0.0}
+score = float(results[0].get("score", 0.0))
+return {
+    "slug": results[0]["slug"],
+    "score": round(score, 4),
+    "confidence": round(score, 4),
+}
+```
+
+I'll modify it to:
+1. Run scanner search (top_k=1).
+2. Run VINA STUDIO (engine.process_image) to get OCR text.
+3. Run cascade to get vina_slug + vina_conf.
+4. Compare and select.
+5. Return final_slug, overall_confidence, plus debug info.
+
+But wait — the dewarp engine's `process_image` is very heavy and returns a huge dict with base64 images. For the scanner endpoint, we just need the OCR text. Let me add a lighter method or just extract what we need.
+
+Actually, `engine.process_image(img_bgr)` returns a dict with `full_text` and `text_blocks`. I can call it and extract `full_text`. But it's heavy. Let me consider whether to run it on the full image or a crop.
+
+Actually, the dewarp engine's `process_image` does YOLO segmentation first (`self.stage1.segment_bottle_and_label(img_bgr)`), which crops to the label. So it handles the full image. Good. I'll just call `engine.process_image(img_bgr)` and use the `full_text`.
+
+Let me check the performance concern. The dewarp engine process_image timings: stage1 (YOLO+SAM), stage2-5 (dewarp + OCR). On RTX 3090, this might be 1-3 sec. Plus scanner embedding ~25ms. Total might be 2-3.5 sec. The SLA is < 3 sec but that's for the owner eval script. For the scanner UI, a bit more is OK. But let me be mindful.
+
+Actually, let me
+Actually, the cleanest approach: 
+1. Normalize function: lowercase, strip non-alphanumeric, transliterate Cyrillic→Latin (for Latin words, keep as-is). This gives a canonical Latin form.
+2. For each product: canonical word set = {normalize(w) for w in name_words} ∪ {normalize(w) for w in slug_words}. Since slug is already Latin, normalize(slug_word) = slug_word. Since name is Cyrillic, normalize(name_word) = transliterated Latin. These should mostly overlap (as we saw).
+3. For OCR: canonical OCR words = {normalize(w) for w in ocr_words}.
+4. Match: for each product, count how many canonical OCR words are in the product's canonical word set.
+
+This handles both alphabets automatically.
+
+But wait - there's a concern. The OCR words after lexicon correction are often in UPPERCASE Cyrillic (e.g., "ТЕМПРАНИЛЬО", "КАБЕРНЕ"). The database names are in Title case Cyrillic (e.g., "100 оттенков красного. Каберне"). After normalization (lowercase + transliterate), "ТЕМПРАНИЛЬО" → "tempranillo", and the name "Каберне" → "kaberne". 
+
+Hmm, so "tempranillo" (from OCR) won't match "kaberne" (from name) because they're different words. But that's fine - we're matching individual words. If the OCR produces "КАБЕРНЕ" it becomes "kaberne" which matches the name word "Каберне"→"kaberne". Good.
+
+The key insight: we match word-by-word. If OCR produces a word that appears in the product's name or slug (in either alphabet), it's a match.
+
+Now, "full match of at least 3 tags/words" - I interpret this as: at least 3 OCR words exactly match (after normalization) words in the product's vocabulary. Then VINA STUDIO confidence = 100%.
+
+Let me now think about which product to pick. For each product in the database, compute the number of OCR words that match its vocabulary. The product with the highest match count is the VINA STUDIO candidate.
+
+But with 2037 products, and the name/slug being fairly unique per product, the top match should be clear.
+
+Actually, I should be careful: common words like "сухое", "красное", "вино" appear in MANY products. So a product with just "сухое" matching would have a low match. But a product whose specific name words (like "автохтонное", "kryma") match would have a higher, more specific match.
+
+So the scoring should weight specific/rare words more, or just count matches and pick the max. Since specific words are unique to a product, the product with the most matches (including specific words) will be the correct one. Let me just count matches and pick the max. To break ties, I could weight by word rarity, but let

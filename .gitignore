@@ -40,3 +40,12 @@ test_dataset/butilki/
 # Binaries and tools
 bin/
 *.exe
+
+# Cloud drive temporary sync files
+.tmp.driveupload/
+
+# Heavy datasets and images
+wines_images_clean/
+owner_eval/
+test_dataset/
+media/

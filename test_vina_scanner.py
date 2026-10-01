@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """
 Тест точности и времени отклика для проекта VINA Scanner.
@@ -6,6 +7,7 @@
 Режимы работы:
   1) direct (по умолчанию) — прямой сверхбыстрый тест через SigLIP2 + FAISS WineSearchEngine (~20-25 мс/кадр).
   2) http — проверка через HTTP API сервер VINA Studio (http://127.0.0.1:8080/v1/eval/predict).
+  3) cascade — каскадный тест: SigLIP + VINA STUDIO OCR + текстовый матчинг (требует GPU).
 """
 
 import argparse
@@ -30,9 +32,8 @@ def calculate_sha256(filepath: Path) -> str:
 
 def run_http_eval(queries, images_dir: Path, endpoint: str, output_path: Path, mapping: dict):
     print(f"\n[HTTP РЕЖИМ] Отправка запросов на {endpoint}...")
-    client = httpx.Client(timeout=30.0)
+    client = httpx.Client(timeout=60.0)
 
-    # Health check
     base_url = endpoint.rsplit("/", 2)[0]
     try:
         r = client.get(f"{base_url}/api/health", timeout=2.0)
@@ -46,7 +47,7 @@ def run_http_eval(queries, images_dir: Path, endpoint: str, output_path: Path, m
     latencies = []
 
     print("\n" + "-" * 80)
-    print(f"{'#':<3} | {'Query ID':<9} | {'Файл':<14} | {'Статус':<7} | {'Top-1 Slug':<32} | {'Время'}")
+    print(f"{'#':<3} | {'Query ID':<9} | {'Файл':<14} | {'Статус':<7} | {'Top-1 Slug':<32} | {'Conf':<8} | {'Время'}")
     print("-" * 80)
 
     with open(output_path, "w", encoding="utf-8", newline="\n") as out_f:
@@ -64,6 +65,8 @@ def run_http_eval(queries, images_dir: Path, endpoint: str, output_path: Path, m
             predicted_slug = None
             latency_ms = 0
             err_msg = ""
+            confidence = 0.0
+            decision_source = ""
 
             try:
                 with open(image_file, "rb") as f:
@@ -74,6 +77,8 @@ def run_http_eval(queries, images_dir: Path, endpoint: str, output_path: Path, m
                 if resp.status_code == 200:
                     data = resp.json()
                     predicted_slug = data.get("slug")
+                    confidence = data.get("confidence_percent", data.get("confidence", 0.0) * 100)
+                    decision_source = data.get("decision_source", "unknown")
                 else:
                     err_msg = f"HTTP {resp.status_code}"
             except Exception as e:
@@ -90,7 +95,8 @@ def run_http_eval(queries, images_dir: Path, endpoint: str, output_path: Path, m
                 status = "✗ FAIL"
 
             slug_disp = (predicted_slug or err_msg or "null")[:32]
-            print(f"{idx:02d} | {query_id:<9} | {image_relpath:<14} | {status:<7} | {slug_disp:<32} | {latency_ms} ms")
+            conf_disp = f"{confidence:.1f}%"
+            print(f"{idx:02d} | {query_id:<9} | {image_relpath:<14} | {status:<7} | {slug_disp:<32} | {conf_disp:<8} | {latency_ms} ms ({decision_source})")
             if not ok and expected:
                 print(f"    ↳ Ожидался : {expected}")
                 print(f"    ↳ Получен  : {predicted_slug}")
@@ -100,6 +106,8 @@ def run_http_eval(queries, images_dir: Path, endpoint: str, output_path: Path, m
                 "image_path": image_relpath,
                 "image_sha256": img_sha256,
                 "predicted_slug": predicted_slug,
+                "confidence": round(confidence, 2),
+                "decision_source": decision_source,
                 "latency_ms": latency_ms,
             }
             out_f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -110,6 +118,7 @@ def run_http_eval(queries, images_dir: Path, endpoint: str, output_path: Path, m
 
 def run_direct_eval(queries, images_dir: Path, output_path: Path, mapping: dict):
     print("\n[DIRECT РЕЖИМ] Инициализация движка VINA WineSearchEngine (SigLIP2 + FAISS)...")
+    sys.path.insert(0, str(Path(__file__).parent))
     from pipeline.catalog import WineCatalog
     from pipeline.search_engine import WineSearchEngine
 

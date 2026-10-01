@@ -98,8 +98,9 @@
                     <h2 class="wine-title" id="wine-title"></h2>
                     
                     <div class="tags">
-                        <span class="tag" id="wine-color"></span>
                         <span class="tag" id="wine-category"></span>
+                        <span class="tag" id="wine-sweetness"></span>
+                        <span class="tag" id="wine-color"></span>
                         <span class="tag" id="wine-region"></span>
                     </div>
                     
@@ -138,7 +139,13 @@
                     <button class="btn-pairing">Рыба</button>
                     <button class="btn-pairing">Сыры</button>
                 </div>
-                <button class="btn btn-secondary btn-full mt-10" id="btn-sommelier-analogs">Подобрать аналоги</button>
+                <input type="text" id="sommelier-input" placeholder="Напишите своё блюдо или повод..." style="width:100%; padding: 12px; margin-top:10px; border-radius:12px; border:1px solid #333; background: #1a1a1a; color:#fff; font-size: 14px;" />
+                <div style="display: flex; gap: 8px; margin-top: 10px;">
+                    <button class="btn btn-secondary" style="flex: 1;" id="btn-sommelier-ask">Спросить сомелье</button>
+                    <button class="btn btn-secondary" style="flex: 1;" id="btn-sommelier-analogs">Подобрать аналоги</button>
+                </div>
+                
+                <div id="sommelier-response" class="sommelier-response mt-10 hidden" style="padding: 12px; background: rgba(0,0,0,0.03); border-radius: 8px; font-size: 14px; line-height: 1.5;"></div>
                 
                 <div class="sommelier-actions mt-10">
                     <button class="btn btn-secondary" id="btn-map" title="Карта виноделен и магазинов">
@@ -179,20 +186,25 @@
                 <div class="wine-image-container">
                     <img id="original-img" src="" alt="Original Photo" style="cursor: zoom-in;">
                 </div>
-                
-                <div class="wine-info" style="opacity: 0.5;">
-                    <div style="height: 14px; background: #e0e0e0; border-radius: 4px; width: 40%; margin-bottom: 12px;"></div>
-                    <div style="height: 24px; background: #e0e0e0; border-radius: 4px; width: 80%; margin-bottom: 16px;"></div>
+                <div class="wine-info">
+                    <p class="wine-winery" id="orig-wine-winery"></p>
+                    <h2 class="wine-title" id="orig-wine-title"></h2>
                     
                     <div class="tags">
-                        <div style="height: 26px; background: #e0e0e0; border-radius: 6px; width: 80px;"></div>
-                        <div style="height: 26px; background: #e0e0e0; border-radius: 6px; width: 70px;"></div>
-                        <div style="height: 26px; background: #e0e0e0; border-radius: 6px; width: 90px;"></div>
+                        <span class="tag" id="orig-wine-category"></span>
+                        <span class="tag" id="orig-wine-sweetness"></span>
+                        <span class="tag" id="orig-wine-color"></span>
+                        <span class="tag" id="orig-wine-region"></span>
                     </div>
                     
-                    <div style="height: 14px; background: #e0e0e0; border-radius: 4px; width: 100%; margin-bottom: 10px; margin-top: 24px;"></div>
-                    <div style="height: 14px; background: #e0e0e0; border-radius: 4px; width: 100%; margin-bottom: 10px;"></div>
-                    <div style="height: 14px; background: #e0e0e0; border-radius: 4px; width: 60%;"></div>
+                    <div class="property">
+                        <span class="prop-label">Сорт:</span>
+                        <span class="prop-value" id="orig-wine-grape"></span>
+                    </div>
+                    
+                    <div class="wine-description">
+                        <p id="orig-wine-desc"></p>
+                    </div>
                 </div>
             </div>
         </main>
@@ -243,7 +255,6 @@
             </div>
         </div>
     </div>
-
-    <script src="scanner.js"></script>
+    <script src="scanner.js?v=6"></script>
 </body>
 </html>

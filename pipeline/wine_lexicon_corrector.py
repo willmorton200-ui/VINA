@@ -72,6 +72,13 @@ class WineVocabularyCorrector:
             "FRANCE", "ITALY", "GEORGIA", "SOUTH AFRICA", "GERMANY"
         ]
         
+        self.glyph_substitutions = [
+            (r"\[4[eё];ra", "Azueira"),
+            (r"Adeqade", "Adega de"),
+            (r"\[ъшейа", "Azueira"),
+            (r"Афе;а %е", "Adega de"),
+        ]
+        
         # Build unified token lexicon
         self.all_phrases = sorted(
             list(set(self.grape_varieties + self.wine_categories + self.regions_and_brands)),
@@ -84,6 +91,23 @@ class WineVocabularyCorrector:
             for token in phrase.split():
                 if len(token) >= 3:
                     self.all_tokens.add(token.upper())
+
+    def update_vocabulary(self, words: List[str]):
+        """Dynamically add words (e.g. from DB) to the lexicon."""
+        new_phrases = []
+        for w in words:
+            if w and isinstance(w, str):
+                cleaned = w.strip().upper()
+                if cleaned and cleaned not in self.all_phrases:
+                    new_phrases.append(cleaned)
+                    
+        if new_phrases:
+            self.all_phrases.extend(new_phrases)
+            self.all_phrases.sort(key=lambda x: len(x), reverse=True)
+            for phrase in new_phrases:
+                for token in phrase.split():
+                    if len(token) >= 3:
+                        self.all_tokens.add(token)
 
         # Exact and regex glyph rules
         self.glyph_substitutions = [

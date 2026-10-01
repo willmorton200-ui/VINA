@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ближайшие винные магазины</title>
+    <!-- Подключаем API Яндекс.Карт 2.1. Если на проде будут лимиты, сюда нужно добавить apikey=ВАШ_КЛЮЧ -->
+    <script src="https://api-maps.yandex.ru/2.1/?apikey=a9876f67-e8c3-499f-9140-fc20210969fa&search_apikey=bc19241e-53ce-432a-811b-f2c78060b57f&lang=ru_RU" type="text/javascript"></script>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            margin: 0; padding: 0; 
+            background: #f9f9fa; color: #333; 
+        }
+        .container { 
+            max-width: 600px; margin: 0 auto; 
+            display: flex; flex-direction: column; 
+            height: 100vh; 
+        }
+        .header { 
+            padding: 15px; background: #fff; text-align: center; 
+            font-weight: 600; font-size: 18px; 
+            border-bottom: 1px solid #eee; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
+        }
+        #map { 
+            width: 100%; height: 45vh; 
+            background: #e0e0e0; flex-shrink: 0; 
+        }
+        .list-container { 
+            padding: 15px; flex-grow: 1; 
+            overflow-y: auto; background: #fff; 
+        }
+        .list-title { 
+            font-size: 16px; font-weight: 600; 
+            margin-bottom: 10px; color: #555; 
+        }
+        .shop-list { list-style: none; padding: 0; margin: 0; }
+        .shop-item { 
+            padding: 12px; border: 1px solid #eee; border-radius: 8px; 
+            margin-bottom: 10px; cursor: pointer; 
+            transition: background 0.2s, border-color 0.2s; 
+            display: flex; justify-content: space-between; align-items: center; 
+        }
+        .shop-item:hover { background: #f0f7ff; border-color: #007aff; }
+        
+        .shop-info { display: flex; flex-direction: column; gap: 4px; }
+        .shop-name { font-weight: 600; font-size: 15px; color: #222; }
+        .shop-address { font-size: 13px; color: #777; }
+        
+        .shop-distance { 
+            font-size: 14px; font-weight: 600; color: #007aff; 
+            background: #e6f2ff; padding: 4px 8px; border-radius: 4px; 
+            white-space: nowrap; margin-left: 10px;
+        }
+        
+        .loading { text-align: center; padding: 20px; color: #888; font-size: 14px; }
+        
+        #route-info { 
+            display: none; padding: 15px; 
+            background: #e6f2ff; border-radius: 8px; 
+            margin-bottom: 15px; font-size: 14px; color: #004488; 
+            border-left: 4px solid #007aff;
+        }
+        .route-title { font-weight: 600; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">🍷 Карта винных магазинов</div>
+    <div id="map"></div>
+    <div class="list-container">
+        <!-- Блок с информацией о пешем маршруте -->
+        <div id="route-info"></div>
+        
+        <div class="list-title">ТОП-5 ближайших на экране:</div>
+        <ul id="shop-list" class="shop-list">
+            <div class="loading">Запрашиваем ваше местоположение...</div>
+        </ul>
+    </div>
+</div>
+
+<script>
+    ymaps.ready(init);
+    let map, userPlacemark, userCoords, currentRoute;
+    let shopPlacemarks = [];
+
+    function init() {
+        // Запрашиваем геолокацию
+        ymaps.geolocation.get({
+            provider: 'browser',
+            mapStateAutoApply: true
+        }).then(function (result) {
+            userCoords = result.geoObjects.position;
+            setupMap(userCoords);
+        }, function (err) {
+            // Фолбэк, если геолокация недоступна или заблокирована (Москва, центр)
+            userCoords = [55.751574, 37.573856];
+            setupMap(userCoords);
+        });
+    }
+
+    function setupMap(coords) {
+        map = new ymaps.Map("map", {
+            center: coords,
+            zoom: 15,
+            controls: ['zoomControl', 'geolocationControl']
+        });
+
+        // Ставим метку пользователя
+        userPlacemark = new ymaps.Placemark(coords, {
+            hintContent: 'Вы здесь'
+        }, {
+            preset: 'islands#redDotIcon' // Красная метка для пользователя
+        });
+        map.geoObjects.add(userPlacemark);
+
+        // При перетаскивании/зуме карты обновляем список магазинов
+        map.events.add('boundschange', function () {
+            searchShops();
+        });
+
+        // Выполняем первичный поиск
+        searchShops();
+    }
+
+    function searchShops() {
+        const bounds = map.getBounds();
+        
+        // Очищаем старые метки с карты
+        shopPlacemarks.forEach(pm => map.geoObjects.remove(pm));
+        shopPlacemarks = [];
+        document.getElementById('shop-list').innerHTML = '<div class="loading">Поиск магазинов...</div>';
+
+        // Делаем поисковый запрос к API Яндекса по видимой области
+        // Важно: сложные запросы через запятую могут ничего не вернуть. Ищем конкретно "винный магазин".
+        ymaps.search('винный магазин', {
+            boundedBy: bounds,
+            strictBounds: true, // Искать только в видимой части карты
+            provider: 'yandex#search', // Указываем, что ищем именно организации (POI)
+            results: 50
+        }).then(function (res) {
+            const totalFound = res.geoObjects.getLength();
+            console.log("Найдено объектов: " + totalFound);
+            
+            if (totalFound === 0) {
+                document.getElementById('shop-list').innerHTML = '<div class="loading">В этой области не найдено винных магазинов. Попробуйте отдалить карту.</div>';
+                return;
+            }
+
+            const shops = [];
+            
+            // Собираем данные
+            res.geoObjects.each(function (geoObject) {
+                const coords = geoObject.geometry.getCoordinates();
+                const name = geoObject.properties.get('name') || 'Винный магазин';
+                const address = geoObject.properties.get('description') || '';
+                
+                // Вычисляем расстояние по прямой от нас до магазина (в метрах)
+                const distance = ymaps.coordSystem.geo.getDistance(userCoords, coords);
+                
+                shops.push({ coords, name, address, distance, geoObject });
+            });
+
+            // Сортируем от ближайшего к дальнему
+            shops.sort((a, b) => a.distance - b.distance);
+            
+            // Оставляем только ТОП-5
+            const top5 = shops.slice(0, 5);
+            renderList(top5);
+
+            // Ставим метки ТОП-5 на карту
+            top5.forEach((shop, index) => {
+                const pm = new ymaps.Placemark(shop.coords, {
+                    hintContent: shop.name,
+                    balloonContent: `<b>${shop.name}</b><br>${shop.address}`
+                }, {
+                    preset: 'islands#blueIcon'
+                });
+                
+                // При клике на метку магазина прокладываем маршрут
+                pm.events.add('click', function (e) {
+                    // Закрываем балун, чтобы не мешал маршруту
+                    pm.balloon.close();
+                    buildRoute(shop);
+                });
+                
+                map.geoObjects.add(pm);
+                shopPlacemarks.push(pm);
+            });
+            
+            if (top5.length === 0) {
+                document.getElementById('shop-list').innerHTML = '<div class="loading">В видимой области нет винных магазинов</div>';
+            }
+        }).catch(function (error) {
+            console.error(error);
+            document.getElementById('shop-list').innerHTML = '<div class="loading" style="color:red;">Ошибка поиска: возможно, API-ключ не поддерживает поиск по организациям.</div>';
+        });
+    }
+
+    // Отрисовка списка под картой
+    function renderList(shops) {
+        const listEl = document.getElementById('shop-list');
+        listEl.innerHTML = '';
+        
+        shops.forEach((shop, index) => {
+            const li = document.createElement('li');
+            li.className = 'shop-item';
+            
+            // Форматируем дистанцию
+            const distStr = shop.distance > 1000 
+                ? (shop.distance / 1000).toFixed(1) + ' км' 
+                : Math.round(shop.distance) + ' м';
+
+            li.innerHTML = `
+                <div class="shop-info">
+                    <span class="shop-name">${index + 1}. ${shop.name}</span>
+                    <span class="shop-address">${shop.address}</span>
+                </div>
+                <div class="shop-distance">${distStr}</div>
+            `;
+            
+            // Клик по элементу списка тоже строит маршрут
+            li.onclick = () => buildRoute(shop);
+            listEl.appendChild(li);
+        });
+    }
+
+    // Прокладывание пешего маршрута
+    function buildRoute(shop) {
+        if (currentRoute) {
+            map.geoObjects.remove(currentRoute);
+        }
+
+        // Создаем мульти-маршрут (пешком)
+        currentRoute = new ymaps.multiRouter.MultiRoute({
+            referencePoints: [userCoords, shop.coords],
+            params: { routingMode: "pedestrian" } // Пеший режим!
+        }, {
+            boundsAutoApply: true, // Карта сама отзумится, чтобы вместить маршрут
+            routeActiveStrokeColor: "#007aff",
+            wayPointFinishIconColor: "#007aff"
+        });
+        
+        map.geoObjects.add(currentRoute);
+        
+        // Когда маршрут построен, получаем время и расстояние
+        currentRoute.model.events.add('requestsuccess', function() {
+            const activeRoute = currentRoute.getActiveRoute();
+            if (activeRoute) {
+                const lengthText = activeRoute.properties.get("distance").text;
+                const timeText = activeRoute.properties.get("duration").text;
+                
+                const infoBox = document.getElementById('route-info');
+                infoBox.style.display = 'block';
+                infoBox.innerHTML = `
+                    <div class="route-title">🚶‍♂️ Пешком до "${shop.name}"</div>
+                    <div>Дистанция: <b>${lengthText}</b> &nbsp;|&nbsp; Примерное время: <b>${timeText}</b></div>
+                `;
+            }
+        });
+        
+        // Обработка ошибок при построении маршрута
+        currentRoute.model.events.add('requesterror', function (error) {
+            alert('Не удалось построить маршрут: ' + error.get('error').message);
+        });
+    }
+</script>
+
+</body>
+</html>

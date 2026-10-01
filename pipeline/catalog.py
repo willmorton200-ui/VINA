@@ -1,45 +1,107 @@
+
 import csv
 import os
 import glob
 import re
 
 class WineCatalog:
-    def __init__(self, csv_path: str = r"D:\VINA\data\wines_integrated.csv", uploads_dir: str = r"D:\VINA\media"):
+    def __init__(self, csv_path: str = None, uploads_dir: str = None):
         """
         Инициализация каталога вин.
-        Автоматически определяет современную базу 2 037 товаров (как в VINA2 / LCT2026),
-        либо откатывается к Strapi CSV при необходимости.
+        Приоритет:
+          1. wines_integrated_clean.csv + wines_images_clean/wines_images/ (новая база, 2103 вина)
+          2. products_catalog.json + wines_integrated.csv + media/products/ (старая база, 2037 вин)
+          3. strapi_output0709.csv + uploads/ (legacy)
         """
-        self.csv_path = csv_path
-        self.uploads_dir = uploads_dir
+        # Пути к новой базе (приоритет №1)
+        self.new_csv = csv_path or r"D:\VINA\wines_integrated_clean.csv"
+        self.new_images_dir = uploads_dir or r"D:\VINA\wines_images_clean\wines_images"
+
+        # Пути к старой базе (фоллбэк)
+        self.old_json = r"D:\VINA\data\products_catalog.json"
+        self.old_csv = r"D:\VINA\data\wines_integrated.csv"
+        self.old_media = r"D:\VINA\media\products"
+
+        # Пути к legacy (фоллбэк №2)
+        self.legacy_csv = r"D:\VINA\TZ\Датасет\Датасет\strapi_output0709.csv"
+        self.legacy_uploads = r"D:\VINA\TZ\Датасет\Датасет\prod-svoe-vino-strapi\prod-svoe-vino\strapi\uploads"
+
         self.wines_by_slug = {}
         self.upload_files = {}
 
-        # 1. Проверяем наличие полной базы 2037 товаров
-        full_json = r"D:\VINA\data\products_catalog.json"
-        full_csv = r"D:\VINA\data\wines_integrated.csv"
-        media_products = r"D:\VINA\media\products"
-
-        if os.path.isfile(full_json) and os.path.isdir(media_products):
-            self._load_full_catalog(full_json, full_csv, media_products)
+        # Определяем, какую базу использовать
+        if os.path.isfile(self.new_csv) and os.path.isdir(self.new_images_dir):
+            self._load_clean_catalog()
+        elif os.path.isfile(self.old_json) and os.path.isdir(self.old_media):
+            self._load_full_catalog()
         else:
             self._index_uploads()
             self._load_legacy_catalog()
 
-    def _load_full_catalog(self, json_path: str, csv_path: str, media_dir: str):
-        print(f"[WineCatalog] Быстрая загрузка полной базы из {json_path}...")
+    def _load_clean_catalog(self):
+        """Загрузка новой чистой базы: wines_integrated_clean.csv + wines_images_clean/"""
+        print(f"[WineCatalog] Загрузка новой базы из {self.new_csv}...")
+        
+        wines_count = 0
+        with_images = 0
+        
+        with open(self.new_csv, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            headers = next(reader)
+            for row in reader:
+                if len(row) < 9:
+                    continue
+                
+                slug = row[7].strip()
+                if not slug:
+                    continue
+                
+                photo_name = row[10].strip() if len(row) > 10 and row[10].strip() else (row[8].strip() if len(row) > 8 else "")
+                # Путь к картинке в новой папке
+                image_path = os.path.join(self.new_images_dir, photo_name) if photo_name else ""
+                
+                sweetness = ""
+                if "-polusuhoe" in slug: sweetness = "полусухое"
+                elif "-suhoe" in slug: sweetness = "сухое"
+                elif "-polusladkoe" in slug: sweetness = "полусладкое"
+                elif "-sladkoe" in slug: sweetness = "сладкое"
+                elif "-desertnoe" in slug: sweetness = "десертное"
+                
+                self.wines_by_slug[slug] = {
+                    "name": row[0].strip(),
+                    "category": row[1].strip(),
+                    "sweetness": sweetness,
+                    "color": row[2].strip(),
+                    "region": row[3].strip(),
+                    "grape": row[4].strip(),
+                    "description": row[5].strip(),
+                    "winery": row[6].strip(),
+                    "slug": slug,
+                    "photo_name": photo_name,
+                    "image_path": image_path if os.path.isfile(image_path) else "",
+                }
+                
+                wines_count += 1
+                if self.wines_by_slug[slug]["image_path"]:
+                    with_images += 1
+        
+        print(f"[WineCatalog] Новая база: {wines_count} вин, {with_images} с изображениями")
+
+    def _load_full_catalog(self):
+        """Загрузка старой полной базы: products_catalog.json + wines_integrated.csv"""
+        print(f"[WineCatalog] Загрузка старой базы из {self.old_json}...")
         import json
-        with open(json_path, "r", encoding="utf-8") as f:
+        with open(self.old_json, "r", encoding="utf-8") as f:
             products = json.load(f)
 
         df_by_slug = {}
-        if os.path.isfile(csv_path):
+        if os.path.isfile(self.old_csv):
             try:
                 import pandas as pd
-                df = pd.read_csv(csv_path)
+                df = pd.read_csv(self.old_csv)
                 df_by_slug = {r['Slug']: r for _, r in df.iterrows() if pd.notna(r.get('Slug'))}
             except Exception as e:
-                print(f"[WineCatalog] Предупреждение при чтении {csv_path}: {e}")
+                print(f"[WineCatalog] Предупреждение при чтении {self.old_csv}: {e}")
 
         for p in products:
             slug = p.get("slug")
@@ -48,8 +110,8 @@ class WineCatalog:
 
             extra = df_by_slug.get(slug, {})
             prod_id = p.get("id")
-            src_path = os.path.join(media_dir, prod_id, "source.webp")
-            lbl_path = os.path.join(media_dir, prod_id, "label.webp")
+            src_path = os.path.join(self.old_media, prod_id, "source.webp")
+            lbl_path = os.path.join(self.old_media, prod_id, "label.webp")
 
             self.wines_by_slug[slug] = {
                 "name": str(extra.get("Название вина") or p.get("title") or slug),
@@ -64,13 +126,12 @@ class WineCatalog:
                 "label_path": lbl_path if os.path.isfile(lbl_path) else "",
             }
 
-        print(f"[WineCatalog] Успешно загружено {len(self.wines_by_slug)} вин с полными метаданными и изображениями.")
+        print(f"[WineCatalog] Старая база: {len(self.wines_by_slug)} вин загружено")
 
     def _index_uploads(self):
-        if not os.path.exists(self.uploads_dir):
+        if not os.path.exists(self.legacy_uploads):
             return
-            
-        for root, _, files in os.walk(self.uploads_dir):
+        for root, _, files in os.walk(self.legacy_uploads):
             for file in files:
                 if file.lower().endswith(('.webp', '.png', '.jpg', '.jpeg')):
                     if file.startswith(('thumbnail_', 'small_', 'medium_', 'large_')):
@@ -100,9 +161,9 @@ class WineCatalog:
         return ""
 
     def _load_legacy_catalog(self):
-        if not os.path.exists(self.csv_path):
+        if not os.path.exists(self.legacy_csv):
             return
-        with open(self.csv_path, 'r', encoding='utf-8') as f:
+        with open(self.legacy_csv, 'r', encoding='utf-8') as f:
             reader = csv.reader(f)
             headers = next(reader)
             for row in reader:

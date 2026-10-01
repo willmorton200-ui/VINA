@@ -102,6 +102,65 @@ class Stage5OCRDecoder:
             except Exception as e:
                 print(f"[Stage5] RapidOCR reading error: {e}")
 
+        # Fix inner boxes pollution (where a large box encloses a smaller box, causing CRNN to read garbage)
+        if self.easy_ru is not None and text_blocks:
+            def get_intersection_area(rect1, rect2):
+                x_left = max(rect1["x"], rect2["x"])
+                y_top = max(rect1["y"], rect2["y"])
+                x_right = min(rect1["x"] + rect1["w"], rect2["x"] + rect2["w"])
+                y_bottom = min(rect1["y"] + rect1["h"], rect2["y"] + rect2["h"])
+                if x_right < x_left or y_bottom < y_top:
+                    return 0.0
+                return (x_right - x_left) * (y_bottom - y_top)
+
+            for i, tb1 in enumerate(text_blocks):
+                rect1 = tb1.get("rect", {})
+                a1 = rect1.get("w", 0) * rect1.get("h", 0) if isinstance(rect1, dict) else 0
+                if a1 == 0: continue
+                
+                for j, tb2 in enumerate(text_blocks):
+                    if i == j: continue
+                    rect2 = tb2.get("rect", {})
+                    a2 = rect2.get("w", 0) * rect2.get("h", 0) if isinstance(rect2, dict) else 0
+                    if a2 == 0: continue
+                    
+                    # If tb2 (large) encloses tb1 (small)
+                    if a2 > a1:
+                        inter_area = get_intersection_area(rect1, rect2)
+                        # If tb1 is > 40% inside tb2
+                        if inter_area / float(a1 + 1e-5) > 0.4:
+                            print(f"[Stage5] Big box '{tb2.get('text')}' encloses '{tb1.get('text')}'. Masking and re-recognizing...", flush=True)
+                            
+                            masked = img_enh.copy()
+                            # Get background color
+                            x, y, w, h = int(rect2["x"]*scale), int(rect2["y"]*scale), int(rect2["w"]*scale), int(rect2["h"]*scale)
+                            x = max(0, x); y = max(0, y)
+                            w = min(masked.shape[1] - x, w)
+                            h = min(masked.shape[0] - y, h)
+                            if w > 0 and h > 0:
+                                big_crop = masked[y:y+h, x:x+w]
+                                bg_color = np.median(big_crop, axis=(0, 1)).astype(np.uint8)
+                            else:
+                                bg_color = np.array([255, 255, 255], dtype=np.uint8)
+                                
+                            # Fill tb1
+                            pts = np.array(tb1["bbox"], dtype=np.float64)
+                            pts_scaled = (pts * scale).astype(np.int32)
+                            cv2.fillPoly(masked, [pts_scaled], bg_color.tolist())
+                            
+                            # Crop tb2
+                            crop = masked[y:y+h, x:x+w]
+                            if crop.size > 0:
+                                res = self.easy_ru.readtext(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
+                                if res:
+                                    best_res = max(res, key=lambda x: x[2])
+                                    new_text = best_res[1].strip()
+                                    new_conf = best_res[2]
+                                    print(f"[Stage5] Re-recognized '{tb2.get('text')}' as '{new_text}' (conf: {new_conf})", flush=True)
+                                    if new_text and new_conf > 0.1:
+                                        tb2["text"] = new_text
+                                        tb2["confidence"] = round(float(new_conf), 3)
+
 
         # 3. Targeted Cyrillic Augmentation via EasyOCR (Consensus Mode)
         # We always run EasyOCR and merge results if it finds confident Cyrillic that RapidOCR missed or hallucinated as Latin.
@@ -148,8 +207,9 @@ class Stage5OCRDecoder:
                             
                     if max_iou > 0.3:
                         # Overlap exists. Should EasyOCR overwrite RapidOCR?
-                        r_text = text_blocks[matched_idx]["text"]
-                        r_conf = text_blocks[matched_idx]["confidence"]
+                        r_text = str(text_blocks[matched_idx].get("text", ""))
+                        conf_val = text_blocks[matched_idx].get("confidence", 0.0)
+                        r_conf = float(conf_val) if isinstance(conf_val, (int, float, str)) else 0.0
                         
                         r_latin_cnt = sum(c in latin_chars for c in r_text)
                         r_cyr_cnt = sum(c in cyrillic_chars for c in r_text)
@@ -178,12 +238,24 @@ class Stage5OCRDecoder:
                             
             except Exception as e:
                 print(f"[Stage5] EasyOCR ru consensus error: {e}")
+        # Remove inner boxes to avoid duplicate text (e.g. "Adega de" inside "Adega de Azueira")
+        def get_intersection_area(rect1, rect2):
+            x_left = max(rect1["x"], rect2["x"])
+            y_top = max(rect1["y"], rect2["y"])
+            x_right = min(rect1["x"] + rect1["w"], rect2["x"] + rect2["w"])
+            y_bottom = min(rect1["y"] + rect1["h"], rect2["y"] + rect2["h"])
+            if x_right < x_left or y_bottom < y_top:
+                return 0.0
+            return (x_right - x_left) * (y_bottom - y_top)
+        # The user requested to keep all frames separately. 
+        # "Если обнаружились две рамки, значит там две строки, значит нужно их рассматривать последовательно"
+        # The overlap filtering is removed entirely.
 
         # Flag uninformative stopwords (e.g. "alc", "vol", "%", numbers)
         stop_words = {"алк", "alc", "vol", "ml", "cl", "l", "л", "об", "alk", "alkohol", "alcohol", "мм", "mm", "cm", "см"}
         import string
         for tb in text_blocks:
-            clean_t = tb["text"].lower()
+            clean_t = str(tb.get("text", "")).lower()
             # Remove punctuation
             for p in string.punctuation:
                 clean_t = clean_t.replace(p, "")
@@ -199,7 +271,13 @@ class Stage5OCRDecoder:
             tb["is_stopword"] = is_stop
 
         # Sort top to bottom, then left to right
-        text_blocks.sort(key=lambda b: (b["rect"]["y"], b["rect"]["x"]))
+        def get_sort_key(b):
+            rect = b.get("rect", {})
+            if isinstance(rect, dict):
+                return (rect.get("y", 0), rect.get("x", 0))
+            return (0, 0)
+            
+        text_blocks.sort(key=get_sort_key)
         return text_blocks
 
     def decode_graphical_codes(self, img_bgr: np.ndarray) -> list[dict]:
@@ -311,7 +389,7 @@ class Stage5OCRDecoder:
             "codes": codes,
             "full_text": full_text,
             "annotated_bgr": annotated_bgr,
-            "num_words": len(text_blocks),
+            "num_words": sum(len(b["text"].split()) for b in text_blocks if not b.get("is_stopword")),
             "lexicon_corrections": all_corrections
         }
 
