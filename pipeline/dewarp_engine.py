@@ -399,6 +399,29 @@ class CylindricalDewarpEngine:
             selected_annotated = annotated_raw_display
             decision_status = f"{gain} сл (неудачная трансформация - выбран исходный захват)"
 
+        # --- MICROSCOPE: Second-pass OCR on bottom third of crop (upscaled x2) ---
+        # Catches small text (grape varieties, wine color) that main OCR misses
+        try:
+            micro_source = dewarped_display if selected_source == "dewarped" else crop_display
+            mh, mw = micro_source.shape[:2]
+            bottom_crop = micro_source[int(mh * 0.65):, :]
+            if bottom_crop.size > 0:
+                bh, bw = bottom_crop.shape[:2]
+                if bh > 10 and bw > 10:
+                    bottom_2x = cv2.resize(bottom_crop, (bw * 2, bh * 2), interpolation=cv2.INTER_CUBIC)
+                    micro_ocr = self.stage5.process(bottom_2x)
+                    micro_text_raw = micro_ocr.get("full_text", "")
+                    if micro_text_raw.strip():
+                        micro_text, _ = self.lexicon.correct_text(micro_text_raw)
+                        # Only append genuinely new words not already in selected_text
+                        existing_words = set(selected_text.upper().split())
+                        new_words = [w for w in micro_text.split() if w.upper() not in existing_words and len(w) > 1]
+                        if new_words:
+                            selected_text = selected_text + " " + " ".join(new_words)
+                            print(f"[Microscope] Found new text in bottom zone: '{' '.join(new_words)}'")
+        except Exception as e:
+            print(f"[Microscope] Error: {e}")
+
         total_ms = round((time.perf_counter() - start_total) * 1000.0, 1)
         timings["total_ms"] = total_ms
 

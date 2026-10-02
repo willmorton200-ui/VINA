@@ -1,27 +1,28 @@
 import cv2
-import numpy as np
-from rapidocr_onnxruntime import RapidOCR
+import json
+from pipeline import CylindricalDewarpEngine
 
-img_path = r"D:\VINA\test_dataset\butilki\monastyrskaya_izba.jpg"
+img_path = r"D:\VINA\owner_eval\1\queries\e3f116c0.jpeg"
+print(f"Processing: {img_path}")
+
 img = cv2.imread(img_path)
-
 if img is None:
-    print("Image not found!")
-    exit()
+    print("Could not load image")
+    exit(1)
 
-ocr = RapidOCR(det_unclip_ratio=1.9, det_db_box_thresh=0.38)
-results, _ = ocr(img)
+engine = CylindricalDewarpEngine(use_gpu=True)
+res = engine.process_image(img)
 
-vis = img.copy()
-if results:
-    for bbox, text, conf in results:
-        pts = np.array(bbox, np.int32)
-        cv2.polylines(vis, [pts], True, (0, 255, 0), 2)
-        # Draw corners
-        for p in pts:
-            cv2.circle(vis, tuple(p), 3, (0, 0, 255), -1)
-        
-        print(f"Text: {text}, Points: {pts.tolist()}")
-
-cv2.imwrite("ocr_test_boxes.jpg", vis)
-print("Saved ocr_test_boxes.jpg")
+if res.get("success"):
+    print("\n--- OCR Text Blocks ---")
+    for b in res.get("artifacts", {}).get("text_blocks", []):
+        print(f"Text: '{b.get('text')}' | Conf: {b.get('confidence')} | Box: {b.get('rect')}")
+    
+    print(f"\nFull text: {res.get('full_text')}")
+    
+    annotated = res.get("annotated_bgr")
+    if annotated is not None:
+        cv2.imwrite(r"D:\VINA\test_ocr_result.jpg", annotated)
+        print("Saved annotated image to D:/VINA/test_ocr_result.jpg")
+else:
+    print(f"Pipeline failed: {res.get('error')}")

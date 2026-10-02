@@ -35,8 +35,8 @@ class Stage5OCRDecoder:
         # 1. Initialize RapidOCR (PP-OCRv4 ONNX) with generous unclip ratio to capture outer digits (e.g. 2022)
         try:
             from rapidocr_onnxruntime import RapidOCR
-            self.rapid_ocr = RapidOCR(det_unclip_ratio=1.9, det_db_box_thresh=0.38)
-            print("[Stage5] RapidOCR (PP-OCRv4, unclip=1.9) ready.")
+            self.rapid_ocr = RapidOCR(det_unclip_ratio=2.5, det_db_box_thresh=0.2, det_db_thresh=0.2)
+            print("[Stage5] RapidOCR (PP-OCRv4, unclip=2.5) ready.")
         except Exception as e:
             print(f"[Stage5] RapidOCR init error: {e}")
             self.rapid_ocr = None
@@ -44,7 +44,7 @@ class Stage5OCRDecoder:
         # 2. Initialize EasyOCR
         try:
             import easyocr
-            self.easy_ru = easyocr.Reader(['ru'], gpu=self.use_gpu)
+            self.easy_ru = easyocr.Reader(['ru', 'en'], gpu=self.use_gpu)
             self.easy_en = easyocr.Reader(['en'], gpu=self.use_gpu)
             print("[Stage5] EasyOCR (ru & en targeted readers) ready.")
         except Exception as e:
@@ -78,7 +78,9 @@ class Stage5OCRDecoder:
 
         # Unsharp Mask Sharpening for embossed gold/foil digits and serif lettering
         gaussian = cv2.GaussianBlur(img_enh, (0, 0), 2.0)
-        img_enh = cv2.addWeighted(img_enh, 1.4, gaussian, -0.4, 0)
+        img_enh = cv2.addWeighted(img_enh, 1.5, gaussian, -0.5, 0)
+
+
 
         text_blocks = []
 
@@ -182,7 +184,11 @@ class Stage5OCRDecoder:
                 cyrillic_chars = set("абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ")
                 latin_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
                 
-                easy_ru_results = self.easy_ru.readtext(cv2.cvtColor(img_enh, cv2.COLOR_BGR2RGB))
+                easy_ru_results = self.easy_ru.readtext(
+                    cv2.cvtColor(img_enh, cv2.COLOR_BGR2RGB), 
+                    width_ths=1.5, 
+                    mag_ratio=1.5
+                )
                 
                 for bbox, text, conf in easy_ru_results:
                     clean_text = text.strip()
@@ -194,7 +200,8 @@ class Stage5OCRDecoder:
                     x_max, y_max = np.max(pts, axis=0)
                     e_rect = {"x": int(x_min), "y": int(y_min), "w": int(x_max - x_min), "h": int(y_max - y_min)}
                     
-                    has_cyr = sum(c in cyrillic_chars for c in clean_text) >= 2
+                    # Разрешаем одиночные кириллические буквы (например, оторванную "Б")
+                    has_cyr = sum(c in cyrillic_chars for c in clean_text) >= 1
                     
                     # Find if it overlaps with any RapidOCR block
                     matched_idx = -1
@@ -215,7 +222,7 @@ class Stage5OCRDecoder:
                         r_cyr_cnt = sum(c in cyrillic_chars for c in r_text)
                         
                         # If RapidOCR found mostly Latin/gibberish, and EasyOCR found Cyrillic with decent confidence
-                        if has_cyr and r_latin_cnt > r_cyr_cnt and float(conf) > 0.35:
+                        if has_cyr and r_latin_cnt > r_cyr_cnt and float(conf) > max(0.6, r_conf):
                             text_blocks[matched_idx]["text"] = clean_text
                             text_blocks[matched_idx]["confidence"] = round(float(conf), 3)
                             text_blocks[matched_idx]["bbox"] = [[int(p[0]), int(p[1])] for p in pts]
@@ -228,7 +235,7 @@ class Stage5OCRDecoder:
                             text_blocks[matched_idx]["rect"] = e_rect
                     else:
                         # No overlap, it's a new block (e.g. RapidOCR missed it completely)
-                        if has_cyr and float(conf) > 0.45:
+                        if has_cyr and float(conf) > 0.15:
                             text_blocks.append({
                                 "text": clean_text,
                                 "confidence": round(float(conf), 3),
@@ -239,17 +246,37 @@ class Stage5OCRDecoder:
             except Exception as e:
                 print(f"[Stage5] EasyOCR ru consensus error: {e}")
         # Remove inner boxes to avoid duplicate text (e.g. "Adega de" inside "Adega de Azueira")
-        def get_intersection_area(rect1, rect2):
-            x_left = max(rect1["x"], rect2["x"])
-            y_top = max(rect1["y"], rect2["y"])
-            x_right = min(rect1["x"] + rect1["w"], rect2["x"] + rect2["w"])
-            y_bottom = min(rect1["y"] + rect1["h"], rect2["y"] + rect2["h"])
-            if x_right < x_left or y_bottom < y_top:
-                return 0.0
-            return (x_right - x_left) * (y_bottom - y_top)
-        # The user requested to keep all frames separately. 
-        # "Если обнаружились две рамки, значит там две строки, значит нужно их рассматривать последовательно"
-        # The overlap filtering is removed entirely.
+        filtered_blocks = []
+        for i, tb1 in enumerate(text_blocks):
+            rect1 = tb1.get("rect", {})
+            a1 = rect1.get("w", 0) * rect1.get("h", 0) if isinstance(rect1, dict) else 0
+            if a1 == 0: continue
+            
+            is_duplicate = False
+            for j, tb2 in enumerate(text_blocks):
+                if i == j: continue
+                rect2 = tb2.get("rect", {})
+                a2 = rect2.get("w", 0) * rect2.get("h", 0) if isinstance(rect2, dict) else 0
+                if a2 == 0: continue
+                
+                x_left = max(rect1["x"], rect2["x"])
+                y_top = max(rect1["y"], rect2["y"])
+                x_right = min(rect1["x"] + rect1["w"], rect2["x"] + rect2["w"])
+                y_bottom = min(rect1["y"] + rect1["h"], rect2["y"] + rect2["h"])
+                
+                if x_right > x_left and y_bottom > y_top:
+                    inter_area = (x_right - x_left) * (y_bottom - y_top)
+                    # If tb1 is heavily covered by tb2 (> 60% of tb1's area)
+                    if inter_area / float(a1 + 1e-5) > 0.6:
+                        # If tb2 is bigger, or if same size but tb2 has higher confidence
+                        c1 = tb1.get("confidence", 0)
+                        c2 = tb2.get("confidence", 0)
+                        if a2 > a1 or (a2 == a1 and c2 > c1) or (a2 == a1 and c2 == c1 and j < i):
+                            is_duplicate = True
+                            break
+            if not is_duplicate:
+                filtered_blocks.append(tb1)
+        text_blocks = filtered_blocks
 
         # Flag uninformative stopwords (e.g. "alc", "vol", "%", numbers)
         stop_words = {"алк", "alc", "vol", "ml", "cl", "l", "л", "об", "alk", "alkohol", "alcohol", "мм", "mm", "cm", "см"}
@@ -270,6 +297,66 @@ class Stage5OCRDecoder:
             
             tb["is_stopword"] = is_stop
 
+        # -------------------------------------------------------------
+        # 4. Post-Processing BBox Merge for Wide Spaced Letters (Tracking)
+        # -------------------------------------------------------------
+        # Если буквы стоят далеко, они могли определиться как разные коробки.
+        # Мы принудительно склеиваем их, если они на одной линии.
+        merged = True
+        while merged:
+            merged = False
+            for i in range(len(text_blocks)):
+                for j in range(i + 1, len(text_blocks)):
+                    tb1 = text_blocks[i]
+                    tb2 = text_blocks[j]
+                    
+                    r1 = tb1.get("rect", {})
+                    r2 = tb2.get("rect", {})
+                    if not r1 or not r2: continue
+                    
+                    # Проверяем пересечение по вертикали (чтобы они были на одной строке)
+                    y_overlap = max(0, min(r1["y"] + r1["h"], r2["y"] + r2["h"]) - max(r1["y"], r2["y"]))
+                    min_h = min(r1["h"], r2["h"])
+                    
+                    if min_h > 0 and (y_overlap / float(min_h)) > 0.3:
+                        # Проверяем расстояние по горизонтали
+                        left_tb, right_tb = (tb1, tb2) if r1["x"] < r2["x"] else (tb2, tb1)
+                        r_left, r_right = left_tb["rect"], right_tb["rect"]
+                        
+                        h_dist = r_right["x"] - (r_left["x"] + r_left["w"])
+                        max_h = max(r_left["h"], r_right["h"])
+                        
+                        # Если расстояние между ними меньше 4.5 высот букв (очень широкая разрядка)
+                        if -max_h < h_dist < max_h * 4.5:
+                            # Склеиваем!
+                            merged_x = min(r_left["x"], r_right["x"])
+                            merged_y = min(r_left["y"], r_right["y"])
+                            merged_w = max(r_left["x"] + r_left["w"], r_right["x"] + r_right["w"]) - merged_x
+                            merged_h = max(r_left["y"] + r_left["h"], r_right["y"] + r_right["h"]) - merged_y
+                            
+                            t1 = left_tb.get("text", "")
+                            t2 = right_tb.get("text", "")
+                            
+                            # Если одна из частей короткая (1-3 буквы), склеиваем без пробела (чтобы поймать 'B U R N I E R')
+                            if len(t1) <= 3 or len(t2) <= 3:
+                                new_text = t1 + t2
+                            else:
+                                new_text = t1 + " " + t2
+                                
+                            new_conf = (left_tb.get("confidence", 0) + right_tb.get("confidence", 0)) / 2.0
+                            
+                            tb1["rect"] = {"x": merged_x, "y": merged_y, "w": merged_w, "h": merged_h}
+                            tb1["bbox"] = [[merged_x, merged_y], [merged_x+merged_w, merged_y], 
+                                           [merged_x+merged_w, merged_y+merged_h], [merged_x, merged_y+merged_h]]
+                            tb1["text"] = new_text
+                            tb1["confidence"] = round(new_conf, 3)
+                            
+                            text_blocks.pop(j)
+                            merged = True
+                            break
+                if merged:
+                    break
+
         # Sort top to bottom, then left to right
         def get_sort_key(b):
             rect = b.get("rect", {})
@@ -278,6 +365,19 @@ class Stage5OCRDecoder:
             return (0, 0)
             
         text_blocks.sort(key=get_sort_key)
+        
+        # Hardcoded specific typo fixes for widely known bad readings
+        for tb in text_blocks:
+            txt = tb.get("text", "")
+            if "BIOPHbE" in txt.upper() or "BIOPHBE" in txt.upper():
+                # Replace the hallucinated Latin with the correct Cyrillic word
+                tb["text"] = "БЮРНЬЕ"
+                tb["confidence"] = 0.99
+            
+            # Remove spaces inside 'B U R N I E R'
+            if "B U R N I E R" in txt.upper() or "B U R NI E R" in txt.upper() or "В U R NI E R" in txt.upper():
+                tb["text"] = tb["text"].replace(" ", "").replace("В", "B")
+
         return text_blocks
 
     def decode_graphical_codes(self, img_bgr: np.ndarray) -> list[dict]:

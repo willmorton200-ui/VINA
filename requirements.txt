@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+python-multipart
+numpy
+opencv-python-headless
+torch
+torchvision
+ultralytics
+easyocr
+rapidocr-onnxruntime
+faiss-cpu
+transformers
+pillow
+httpx
+pydantic

@@ -9,9 +9,17 @@ import pickle
 import time
 
 class WineSearchEngine:
-    def __init__(self, catalog, use_gpu: bool = True, index_path: str = "D:\\VINA\\models\\siglip2_index.faiss"):
+    def __init__(self, catalog, use_gpu: bool = True, index_path: str = None):
         """
         Поисковый движок на базе SigLIP 2 и FAISS.
+        """
+        if index_path is None:
+            from pathlib import Path
+            abs_p = Path(r"D:\VINA\models\siglip2_index.faiss")
+            if abs_p.exists():
+                index_path = str(abs_p)
+            else:
+                index_path = str(Path(__file__).resolve().parent.parent / "models" / "siglip2_index.faiss")
         :param catalog: Экземпляр WineCatalog
         :param use_gpu: Использовать ли GPU для инференса и faiss
         :param index_path: Путь для сохранения/загрузки построенного faiss-индекса

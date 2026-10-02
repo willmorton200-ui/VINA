@@ -216,11 +216,21 @@ class VinaStudioMatcher:
     
     def cascade_decision(self, ocr_text: str, siglip_results: List[Dict], min_tags_threshold: int = 3) -> Dict:
         """
-        Каскад v4: проверяем **топ-5** из SigLIP.
+        Каскад v4: проверяем **топ-5** из SigLIP. 
+        Оценка по эмбеддингам + человеческая эвристика (Цвет -> Резерв -> Сорт).
         """
         ocr_words = extract_ocr_words(ocr_text)
-        # ← Топ-5 вместо топ-3
         top_candidates = siglip_results[:5] if siglip_results else []
+        
+        # Определяем цвета по OCR
+        explicit_red = bool({"КРАСНОЕ", "RED", "КРАСНЫЙ", "КРАСНАЯ"} & ocr_words)
+        explicit_white = bool({"БЕЛОЕ", "WHITE", "БЕЛЫЙ", "БЕЛАЯ"} & ocr_words)
+        explicit_rose = bool({"РОЗОВОЕ", "ROSE", "РОЗОВЫЙ", "РОЗОВАЯ", "ROZE"} & ocr_words)
+        
+        grape_red = bool({"NOIR", "НУАР", "CABERNET", "КАБЕРНЕ", "MERLOT", "МЕРЛО", "SYRAH", "СИРА", "SHIRAZ", "ШИРАЗ", "SAPERAVI", "САПЕРАВИ"} & ocr_words)
+        grape_white = bool({"БЛАН", "BLANC", "CHARDONNAY", "ШАРДОНЕ", "RIESLING", "РИСЛИНГ", "ALIGOTE", "АЛИГОТЕ", "РКАЦИТЕЛИ", "RKATSITELI"} & ocr_words)
+        
+        ocr_has_reserve = bool({"РЕЗЕРВ", "RESERVE", "RESERVA", "РЕЗЕРВА", "ВЫДЕРЖАННОЕ"} & ocr_words)
         
         scored_candidates = []
         for candidate in top_candidates:
@@ -230,18 +240,58 @@ class VinaStudioMatcher:
             
             divisor, match_count, total_words, matched_words = self.compute_ocr_bonus(slug, ocr_words)
             
-            # Штраф, если ни одно слово из названия не найдено (и OCR вообще что-то нашел)
+            heuristics_score = 0.0
+            wine_info = self.catalog.get_wine(slug) or {}
+            
+            # --- Улика 1: Цвет ---
+            cat_red = False
+            cat_white = False
+            cat_rose = False
+            
+            category = wine_info.get("category", "").lower()
+            slug_lower = slug.lower()
+            
+            if "красн" in category or "-krasnoe" in slug_lower or "krasnoe" in slug_lower or "-red" in slug_lower: 
+                cat_red = True
+            elif "бел" in category or "-beloe" in slug_lower or "beloe" in slug_lower or "-white" in slug_lower: 
+                cat_white = True
+            elif "роз" in category or "-rozovoe" in slug_lower or "rozovoe" in slug_lower or "-rose" in slug_lower or "roze" in slug_lower: 
+                cat_rose = True
+                
+            # Бонусы за совпадение цвета
+            if cat_red and (explicit_red or grape_red): heuristics_score += 15.0
+            elif cat_white and (explicit_white or grape_white): heuristics_score += 15.0
+            elif cat_rose and explicit_rose: heuristics_score += 15.0
+            
+            # Штрафы за противоречие цвета
+            if cat_red and (explicit_white or explicit_rose or grape_white) and not (explicit_red or grape_red): 
+                heuristics_score -= 30.0
+            elif cat_white and explicit_red and not explicit_white: 
+                heuristics_score -= 30.0
+            elif cat_rose and (explicit_white or explicit_red) and not explicit_rose: 
+                heuristics_score -= 30.0
+                
+            # --- Улика 2: Резерв ---
+            slug_name_lower = slug_lower + " " + wine_info.get("name", "").lower()
+            cat_is_reserve = any(w in slug_name_lower for w in ["reserve", "reserva", "rezerv", "резерв", "выдержан"])
+            
+            if ocr_has_reserve and cat_is_reserve:
+                heuristics_score += 15.0
+            elif ocr_has_reserve and not cat_is_reserve:
+                heuristics_score -= 20.0
+            # --- Улика 3: Сорт и базовый OCR ---
+            # Старая логика: если есть совпадения, даем OCR бонус
+            if match_count == 0:
+                ocr_bonus = 0.0
+            else:
+                ocr_bonus = (100.0 - emb_confidence) / divisor
+                
+            # Временно отключаем штраф за полное несовпадение названия (name_penalty)
+            # из-за проблем с транслитерацией (например SAPERAVI в OCR и Саперави в базе)
             name_penalty = 0.0
-            if ocr_words:
-                wine_info = self.catalog.get_wine(slug)
-                if wine_info and wine_info.get("name"):
-                    name_words = extract_ocr_words(wine_info["name"])
-                    if name_words and not any(nw in ocr_words for nw in name_words):
-                        name_penalty = 10.0
-                        
-            ocr_bonus = (100.0 - emb_confidence) / divisor
-            final_confidence = emb_confidence + ocr_bonus - name_penalty
-            final_confidence = min(100.0, max(0.0, final_confidence))
+            
+            raw_final_confidence = emb_confidence + ocr_bonus - name_penalty + heuristics_score
+            final_confidence = min(100.0, max(0.0, raw_final_confidence))
             
             scored_candidates.append({
                 "slug": slug,
@@ -251,12 +301,13 @@ class VinaStudioMatcher:
                 "ocr_bonus": round(ocr_bonus, 2),
                 "divisor": divisor,
                 "final_confidence": round(final_confidence, 2),
+                "raw_final_confidence": raw_final_confidence,
                 "match_count": match_count,
                 "total_words": total_words,
                 "matched_words": matched_words,
             })
         
-        scored_candidates.sort(key=lambda x: -x["final_confidence"])
+        scored_candidates.sort(key=lambda x: -x["raw_final_confidence"])
         
         if not scored_candidates:
             return {"slug": None, "confidence_embedding": 0.0, "ocr_bonus": 0.0,

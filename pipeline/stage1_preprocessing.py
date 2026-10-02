@@ -20,9 +20,15 @@ import torch
 from .sam_refiner import SAMRefiner
 from .vectorizer import Vectorizer, VectorMask, LabelShape
 
-TRAINED_WEIGHTS = Path(r"D:\models\trained\antigravity_train\train_1786971446\weights\best.pt")
-WORLD_WEIGHTS = Path(r"D:\models\yolov8s-worldv2.pt")
-GENERIC_WEIGHTS = Path(r"D:\VINA\yolov8n-seg.pt")
+def _get_model_path(abs_path: str, relative_fallback: str) -> Path:
+    p = Path(abs_path)
+    if p.exists():
+        return p
+    return Path(__file__).resolve().parent.parent / "models" / relative_fallback
+
+TRAINED_WEIGHTS = _get_model_path(r"D:\models\trained\antigravity_train\train_1786971446\weights\best.pt", r"best.pt")
+WORLD_WEIGHTS = _get_model_path(r"D:\models\yolov8s-worldv2.pt", r"yolov8s-worldv2.pt")
+GENERIC_WEIGHTS = _get_model_path(r"D:\VINA\yolov8n-seg.pt", r"yolov8n-seg.pt")
 
 class Stage1Preprocessor:
     def __init__(self, use_gpu: bool = True):

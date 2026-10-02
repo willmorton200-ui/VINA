@@ -13,9 +13,18 @@ class WineCatalog:
           2. products_catalog.json + wines_integrated.csv + media/products/ (старая база, 2037 вин)
           3. strapi_output0709.csv + uploads/ (legacy)
         """
-        # Пути к новой базе (приоритет №1)
-        self.new_csv = csv_path or r"D:\VINA\wines_integrated_clean.csv"
-        self.new_images_dir = uploads_dir or r"D:\VINA\wines_images_clean\wines_images"
+        from pathlib import Path
+        base_dir = Path(__file__).resolve().parent.parent
+
+        self.new_csv = csv_path
+        if not self.new_csv:
+            abs_csv = Path(r"D:\VINA\wines_integrated_clean.csv")
+            self.new_csv = str(abs_csv) if abs_csv.exists() else str(base_dir / "wines_integrated_clean.csv")
+            
+        self.new_images_dir = uploads_dir
+        if not self.new_images_dir:
+            abs_img = Path(r"D:\VINA\wines_images_clean\wines_images")
+            self.new_images_dir = str(abs_img) if abs_img.exists() else str(base_dir / "wines_images_clean" / "wines_images")
 
         # Пути к старой базе (фоллбэк)
         self.old_json = r"D:\VINA\data\products_catalog.json"

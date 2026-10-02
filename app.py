@@ -21,6 +21,7 @@ from pipeline.catalog import WineCatalog
 from pipeline.search_engine import WineSearchEngine
 from pipeline import CylindricalDewarpEngine, compute_image_metrics
 from pipeline.vina_studio_matcher import VinaStudioMatcher
+from pipeline.color_matcher import calculate_structural_orb_matches
 
 app = FastAPI(title="VINA Cylindrical Dewarping Studio", version="1.0.0")
 
@@ -205,47 +206,53 @@ async def eval_predict(image: UploadFile = File(...)):
                     dewarped_results = search_engine.search_by_cv2_image(dewarped_img, top_k=5)
     except Exception as e:
         print(f"[eval_predict] VINA STUDIO fallback: {e}")
+        dewarped_img = None
 
     # ШАГ 3: Берем максимум из (оригинал, выпрямленная)
     combined_scores = {}
     for r in siglip_results:
-        combined_scores[r["slug"]] = {"score": r["score"], "source": "raw"}
+        combined_scores[r["slug"]] = {"slug": r["slug"], "score": r["score"], "source": "raw"}
         
     for r in dewarped_results:
         if r["slug"] not in combined_scores or r["score"] > combined_scores[r["slug"]]["score"]:
-            combined_scores[r["slug"]] = {"score": r["score"], "source": "dewarped"}
+            combined_scores[r["slug"]] = {"slug": r["slug"], "score": r["score"], "source": "dewarped"}
             
     if not combined_scores:
         return {"slug": None, "score": 0.0, "confidence": 0.0, "confidence_percent": 0.0}
         
-    # Сортируем по убыванию score
-    sorted_candidates = sorted(combined_scores.items(), key=lambda x: x[1]["score"], reverse=True)
-    best_slug = sorted_candidates[0][0]
-    best_score = sorted_candidates[0][1]["score"]
-    best_source = sorted_candidates[0][1]["source"]
+    # Сортируем по убыванию score и берем ТОП-5 для каскада
+    sorted_candidates = sorted(combined_scores.values(), key=lambda x: x["score"], reverse=True)[:5]
     
-    # Нормализуем для совместимости
-    final_confidence = max(0.0, min(100.0, (best_score + 1.0) / 2.0 * 100.0))
+    # ШАГ 4: Каскад (SigLIP + OCR)
+    cascade_result = vina_matcher.cascade_decision(ocr_text, sorted_candidates)
+    candidates = cascade_result.get("candidates", [])
+
+    # Пере-сортировка на всякий случай
+    candidates = sorted(candidates, key=lambda x: x["raw_final_confidence"] if "raw_final_confidence" in x else x["final_confidence"], reverse=True)
+    best_candidate = candidates[0]
+    
+    best_slug = best_candidate["slug"]
+    best_score = best_candidate.get("score", best_candidate.get("raw_score", 0.0))
+    best_source = best_candidate.get("source", "unknown")
+    final_confidence = best_candidate["final_confidence"]
+    wine_info = catalog.get_wine(best_slug) or {}
 
     return {
         "slug": best_slug,
-        "name": catalog.get_wine(best_slug).get("name", "") if catalog.get_wine(best_slug) else "",
+        "name": wine_info.get("name", ""),
         "score": round(best_score, 4),
         "confidence": round(final_confidence / 100.0, 4),
         "confidence_percent": round(final_confidence, 2),
-        "confidence_embedding": round(final_confidence, 2),
-        "ocr_bonus": 0.0,
-        "divisor": 1,
-        "decision_source": f"siglip_max_{best_source}",
-        "match_count": 0,
-        "total_words": 0,
-        "matched_words": [],
+        "confidence_embedding": best_candidate.get("confidence_embedding", 0.0),
+        "ocr_bonus": best_candidate.get("ocr_bonus", 0.0), 
+        "color_bonus": round(best_candidate.get("color_bonus", 0.0), 2),
+        "divisor": cascade_result.get("divisor", 4),
+        "decision_source": cascade_result.get("decision_source", "unknown"),
+        "match_count": best_candidate.get("match_count", 0),
+        "total_words": cascade_result.get("total_words", 0),
+        "matched_words": cascade_result.get("matched_words", []),
         "ocr_text": ocr_text[:200] if ocr_text else "",
-        "candidates": [
-            {"slug": c[0], "score": round(c[1]["score"], 4),
-             "source": c[1]["source"]}
-            for c in sorted_candidates[:5]
-        ],
+        "candidates": candidates,
         "total_time_ms": round((time.time() - t0) * 1000, 1),
     }
 

@@ -8,12 +8,11 @@ import os
 
 app = FastAPI()
 
-MAPPING_FILE = "D:/VINA/owner_eval/119/mapping.json"
-QUERIES_DIR = "D:/VINA/owner_eval/119/queries"
+OWNER_EVAL_DIR = "D:/VINA/owner_eval"
 CATALOG_IMAGES_DIR = "D:/VINA/wines_images_clean/wines_images"
 CATALOG_CSV = "D:/VINA/wines_integrated_clean.csv"
 
-app.mount("/queries", StaticFiles(directory=QUERIES_DIR), name="queries")
+app.mount("/owner_eval", StaticFiles(directory=OWNER_EVAL_DIR), name="owner_eval")
 if os.path.exists(CATALOG_IMAGES_DIR):
     app.mount("/catalog_images", StaticFiles(directory=CATALOG_IMAGES_DIR), name="catalog_images")
 
@@ -56,25 +55,69 @@ async def get_index():
             button:hover { background: #45a049; }
             .search-box { margin-bottom: 10px; }
             .saved-msg { color: #4CAF50; margin-left: 10px; display: none; }
+            /* Modal styles */
+            .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); overflow: auto; align-items: center; justify-content: center; }
+            .modal-content { max-width: 90%; max-height: 90%; margin: auto; display: block; object-fit: contain; }
+            .modal-close { position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; cursor: pointer; }
+            .modal-close:hover { color: #bbb; }
+            .zoomable { cursor: zoom-in; transition: 0.3s; }
+            .zoomable:hover { opacity: 0.8; }
         </style>
     </head>
     <body>
+        <!-- Image Modal -->
+        <div id="image-modal" class="modal" onclick="closeModal(event)">
+            <span class="modal-close" onclick="closeModal(event)">&times;</span>
+            <img class="modal-content" id="modal-img">
+        </div>
+        
         <div class="container">
-            <h1>Редактор owner_eval/119</h1>
+            <h1 id="editor-title">Редактор owner_eval/119</h1>
+            <div style="margin-bottom: 20px;">
+                <label style="font-size: 1.2em; margin-right: 10px;">Выбор датасета:</label>
+                <select id="dataset-select" onchange="changeDataset()" style="padding: 8px; font-size: 1.1em; background: #222; color: #fff; border: 1px solid #555; border-radius: 4px;">
+                    <option value="119">119</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                </select>
+            </div>
             <div id="cases-container">Загрузка...</div>
         </div>
         
         <script>
+            function openModal(src) {
+                const modal = document.getElementById("image-modal");
+                const modalImg = document.getElementById("modal-img");
+                modal.style.display = "flex";
+                modalImg.src = src;
+            }
+            function closeModal(e) {
+                if (e.target.id === "image-modal" || e.target.className === "modal-close") {
+                    document.getElementById("image-modal").style.display = "none";
+                }
+            }
+
             let cases = [];
             let catalog = [];
+            let currentDataset = "119";
+            
+            function changeDataset() {
+                currentDataset = document.getElementById("dataset-select").value;
+                document.getElementById("editor-title").innerText = `Редактор owner_eval/${currentDataset}`;
+                loadCases();
+            }
             
             async function loadData() {
                 const catalogRes = await fetch('/api/catalog');
                 catalog = await catalogRes.json();
                 
-                const casesRes = await fetch('/api/cases');
+                await loadCases();
+            }
+            
+            async function loadCases() {
+                const casesRes = await fetch(`/api/cases?dataset=${currentDataset}`);
                 cases = await casesRes.json();
-                
                 renderCases();
             }
             
@@ -92,7 +135,7 @@ async def get_index():
                     card.innerHTML = `
                         <div class="image-col">
                             <h3>${c.query_id}</h3>
-                            <img src="/queries/${c.image_path}" alt="Query Image">
+                            <img class="zoomable" src="/owner_eval/${currentDataset}/queries/${c.image_path}" alt="Query Image" onclick="openModal(this.src)">
                         </div>
                         <div class="info-col">
                             <div class="current-expected">
@@ -108,9 +151,9 @@ async def get_index():
                             <div id="catalog-list-${c.query_id}"></div>
                         </div>
                         <div class="selected-image-col">
-                            <img id="preview-${c.query_id}" src="${expectedWine ? '/catalog_images/' + expectedWine.image : ''}" 
+                            <img class="zoomable" id="preview-${c.query_id}" src="${expectedWine ? '/catalog_images/' + expectedWine.image : ''}" 
                                  style="display: ${expectedWine && expectedWine.image ? 'block' : 'none'};" 
-                                 onerror="this.style.display='none'">
+                                 onerror="this.style.display='none'" onclick="openModal(this.src)">
                         </div>
                     `;
                     
@@ -164,7 +207,7 @@ async def get_index():
                 const res = await fetch('/api/update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query_id: c.query_id, expected_slug: c.expected_slug })
+                    body: JSON.stringify({ query_id: c.query_id, expected_slug: c.expected_slug, dataset: currentDataset })
                 });
                 if (res.ok) {
                     const msg = document.getElementById(`msg-${queryId}`);
@@ -176,7 +219,7 @@ async def get_index():
             async function deleteCase(queryId) {
                 if (!confirm("Удалить эту картинку из тестового набора?")) return;
                 
-                const res = await fetch(`/api/delete?query_id=${queryId}`, { method: 'DELETE' });
+                const res = await fetch(`/api/delete?query_id=${queryId}&dataset=${currentDataset}`, { method: 'DELETE' });
                 if (res.ok) {
                     const card = document.getElementById(`case-${queryId}`);
                     card.style.display = 'none';
@@ -196,8 +239,11 @@ async def get_catalog():
     return JSONResponse(content=CATALOG_LIST)
 
 @app.get("/api/cases")
-async def get_cases():
-    with open(MAPPING_FILE, 'r', encoding='utf-8') as f:
+async def get_cases(dataset: str = "119"):
+    mapping_file = os.path.join(OWNER_EVAL_DIR, dataset, "mapping.json")
+    if not os.path.exists(mapping_file):
+        return JSONResponse(content=[])
+    with open(mapping_file, 'r', encoding='utf-8') as f:
         mapping = json.load(f)
     return JSONResponse(content=mapping["cases"])
 
@@ -206,8 +252,11 @@ async def update_case(request: Request):
     data = await request.json()
     q_id = data.get("query_id")
     expected_slug = data.get("expected_slug")
+    dataset = data.get("dataset", "119")
     
-    with open(MAPPING_FILE, 'r', encoding='utf-8') as f:
+    mapping_file = os.path.join(OWNER_EVAL_DIR, dataset, "mapping.json")
+    
+    with open(mapping_file, 'r', encoding='utf-8') as f:
         mapping = json.load(f)
         
     for c in mapping["cases"]:
@@ -215,20 +264,21 @@ async def update_case(request: Request):
             c["expected_slug"] = expected_slug
             break
             
-    with open(MAPPING_FILE, 'w', encoding='utf-8') as f:
+    with open(mapping_file, 'w', encoding='utf-8') as f:
         json.dump(mapping, f, indent=2, ensure_ascii=False)
         
     return {"status": "ok"}
 
 @app.delete("/api/delete")
-async def delete_case(query_id: str):
-    with open(MAPPING_FILE, 'r', encoding='utf-8') as f:
+async def delete_case(query_id: str, dataset: str = "119"):
+    mapping_file = os.path.join(OWNER_EVAL_DIR, dataset, "mapping.json")
+    with open(mapping_file, 'r', encoding='utf-8') as f:
         mapping = json.load(f)
         
     mapping["cases"] = [c for c in mapping["cases"] if c["query_id"] != query_id]
     mapping["positive_count"] = len(mapping["cases"])
             
-    with open(MAPPING_FILE, 'w', encoding='utf-8') as f:
+    with open(mapping_file, 'w', encoding='utf-8') as f:
         json.dump(mapping, f, indent=2, ensure_ascii=False)
         
     return {"status": "ok"}
