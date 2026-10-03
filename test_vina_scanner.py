@@ -186,7 +186,10 @@ def main():
     parser.add_argument("--eval-root", type=Path, default=Path(r"D:\VINA2\owner_eval"), help="Путь к папке owner_eval")
     args = parser.parse_args()
 
-    pack_dir = args.eval_root / args.run
+    pack_dir = args.eval_root
+    if not (pack_dir / "mapping.json").exists():
+        pack_dir = args.eval_root / args.run
+        
     manifest_path = pack_dir / "queries.tsv"
     mapping_path = pack_dir / "mapping.json"
     images_dir = pack_dir / "queries"

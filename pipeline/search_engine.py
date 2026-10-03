@@ -20,10 +20,6 @@ class WineSearchEngine:
                 index_path = str(abs_p)
             else:
                 index_path = str(Path(__file__).resolve().parent.parent / "models" / "siglip2_index.faiss")
-        :param catalog: Экземпляр WineCatalog
-        :param use_gpu: Использовать ли GPU для инференса и faiss
-        :param index_path: Путь для сохранения/загрузки построенного faiss-индекса
-        """
         self.catalog = catalog
         self.use_gpu = use_gpu and torch.cuda.is_available()
         self.device = "cuda:0" if self.use_gpu else "cpu"
@@ -100,7 +96,7 @@ class WineSearchEngine:
             pickle.dump(self.slugs, f)
 
     def _load_index(self):
-        """Загружает сохраненный индекс FAISS."""
+        # Загружает сохраненный индекс FAISS.
         print(f"[SearchEngine] Загрузка FAISS индекса из {self.index_path}...")
         self.index = faiss.read_index(self.index_path)
             
@@ -109,10 +105,7 @@ class WineSearchEngine:
         print(f"[SearchEngine] Индекс загружен (размер: {self.index.ntotal}).")
 
     def search_by_cv2_image(self, bgr_img: np.ndarray, top_k: int = 5):
-        """
-        Ищет наиболее похожие вина по изображению cv2 (BGR).
-        Возвращает список dict'ов с 'slug', 'score', 'wine_data'.
-        """
+        # Returns list of dicts with slug, score, wine_data
         if self.index is None or self.index.ntotal == 0:
             return []
             
@@ -149,3 +142,51 @@ class WineSearchEngine:
                 break
 
         return results
+
+    def search_by_text(self, ocr_text: str, top_k: int = 20):
+        # Text-based fallback using OCR and transliteration
+        if not ocr_text or not str(ocr_text).strip():
+            return []
+            
+        import re
+        from pipeline.vina_studio_matcher import extract_ocr_words, extract_slug_words
+        
+        ocr_words = extract_ocr_words(ocr_text)
+        if not ocr_words:
+            return []
+            
+        results = []
+        for wine in self.catalog.get_all_wines():
+            slug = wine.get("slug", "")
+            name = wine.get("name", "") or wine.get("title", "")
+            winery = wine.get("winery", "")
+            
+            slug_words = extract_slug_words(slug)
+            
+            # Words from name and winery (split by non-alphanumeric)
+            name_words = set(w.upper() for w in re.findall(r'[A-Za-zА-Яа-яЁё0-9]+', name))
+            winery_words = set(w.upper() for w in re.findall(r'[A-Za-zА-Яа-яЁё0-9]+', winery))
+            
+            target_words = set(slug_words).union(name_words).union(winery_words)
+            
+            # Raw number of intersecting words (weighting longer words slightly higher)
+            intersection = target_words.intersection(ocr_words)
+            score = sum(len(w) for w in intersection)
+            
+            if score > 0:
+                results.append({
+                    "slug": slug,
+                    "score": score,
+                    "wine_data": wine
+                })
+                
+        results.sort(key=lambda x: x["score"], reverse=True)
+        # Normalize scores to 0-1 range to roughly mimic cosine similarity
+        if results and results[0]["score"] > 0:
+            max_score = results[0]["score"]
+            for r in results:
+                # Text scores aren't exactly equivalent to SigLIP scores (which are -1 to 1)
+                # But we map them to 0.5 - 0.9 range so they get evaluated in cascade
+                r["score"] = 0.5 + 0.4 * (r["score"] / max_score)
+        
+        return results[:top_k]
