@@ -83,8 +83,7 @@ def extract_slug_words(slug: str) -> List[tuple]:
     for part in parts:
         if not part or len(part) < 2:
             continue
-        # Игнорируем слова из цифр (года урожая, объемы)
-        if part.isdigit():
+        if part.isdigit() and len(part) == 4 and (part.startswith("20") or part.startswith("19")):
             continue
             
         norm = part.upper()
@@ -130,7 +129,7 @@ def extract_ocr_words(ocr_text: str) -> set:
     }
     
     for w in words:
-        if w.isdigit():
+        if w.isdigit() and len(w) == 4 and (w.startswith("20") or w.startswith("19")):
             continue
         norm = normalize_word(w)
         if len(norm) >= 2:
@@ -360,6 +359,11 @@ class VinaStudioMatcher:
                 ocr_bonus = 0.0
             else:
                 ocr_bonus = (100.0 - emb_confidence) / divisor
+                # Штраф за короткие имена брендов в базе (например Golubitskoe),
+                # чтобы они не перевешивали конкретные вина за счет 100% совпадения одного слова
+                if total_words < 4:
+                    ocr_bonus *= (total_words / 4.0)
+                
                 # Добавляем небольшой линейный бонус за каждый совпавший вес,
                 # чтобы различать кандидатов, попавших в один divisor
                 ocr_bonus += matched_weight * 1.5
