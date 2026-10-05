@@ -185,8 +185,8 @@ async def eval_predict(image: UploadFile = File(...)):
     if img_bgr is None:
         raise HTTPException(status_code=400, detail="Uploaded file is not a valid image")
 
-    # ШАГ 1: SigLIP топ-5 (на оригинале)
-    siglip_results = search_engine.search_by_cv2_image(img_bgr, top_k=5)
+    # ШАГ 1: SigLIP топ-20 (на оригинале)
+    siglip_results = search_engine.search_by_cv2_image(img_bgr, top_k=20)
     
     # ШАГ 2: VINA STUDIO (получение выпрямленной этикетки)
     dewarped_results = []
@@ -203,7 +203,7 @@ async def eval_predict(image: UploadFile = File(...)):
                 d_np = np.frombuffer(d_bytes, np.uint8)
                 dewarped_img = cv2.imdecode(d_np, cv2.IMREAD_COLOR)
                 if dewarped_img is not None:
-                    dewarped_results = search_engine.search_by_cv2_image(dewarped_img, top_k=5)
+                    dewarped_results = search_engine.search_by_cv2_image(dewarped_img, top_k=20)
     except Exception as e:
         print(f"[eval_predict] VINA STUDIO fallback: {e}")
         dewarped_img = None
@@ -220,11 +220,14 @@ async def eval_predict(image: UploadFile = File(...)):
     if not combined_scores:
         return {"slug": None, "score": 0.0, "confidence": 0.0, "confidence_percent": 0.0}
         
-    # Сортируем по убыванию score и берем ТОП-5 для каскада
-    sorted_candidates = sorted(combined_scores.values(), key=lambda x: x["score"], reverse=True)[:5]
+    # Сортируем по убыванию score и берем ТОП-20 для каскада
+    sorted_candidates = sorted(combined_scores.values(), key=lambda x: x["score"], reverse=True)[:20]
     
     # ШАГ 4: Каскад (SigLIP + OCR)
-    cascade_result = vina_matcher.cascade_decision(ocr_text, sorted_candidates)
+    if os.environ.get("VINA_MATCHER_MODE", "legacy").lower() == "legacy":
+        cascade_result = vina_matcher.cascade_decision(ocr_text, sorted_candidates)
+    else:
+        cascade_result = vina_matcher.simple_decision(ocr_text, sorted_candidates)
     candidates = cascade_result.get("candidates", [])
 
     # Пере-сортировка на всякий случай

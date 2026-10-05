@@ -76,27 +76,33 @@ def is_cyrillic(text: str) -> bool:
     return any('А' <= c <= 'Я' or c == 'Ё' or 'а' <= c <= 'я' or c == 'ё' for c in text)
 
 
-def extract_slug_words(slug: str) -> List[str]:
+def extract_slug_words(slug: str) -> List[tuple]:
     parts = slug.replace('_', '-').split('-')
-    seen = set()
     words = []
+    seen_groups = set()
     for part in parts:
         if not part or len(part) < 2:
             continue
+        # Игнорируем слова из цифр (года урожая, объемы)
+        if part.isdigit():
+            continue
+            
         norm = part.upper()
-        if norm not in seen:
-            words.append(norm)
-            seen.add(norm)
+        group = [norm]
         if not is_cyrillic(part):
             cyr = latin_to_cyrillic(part).upper()
-            if cyr != norm and cyr not in seen:
-                words.append(cyr)
-                seen.add(cyr)
+            if cyr != norm:
+                group.append(cyr)
         if is_cyrillic(part):
             lat = cyrillic_to_latin(part).upper()
-            if lat != norm and lat not in seen:
-                words.append(lat)
-                seen.add(lat)
+            if lat != norm:
+                group.append(lat)
+        
+        group_tuple = tuple(set(group))
+        if group_tuple not in seen_groups:
+            seen_groups.add(group_tuple)
+            words.append(group_tuple)
+            
     return words
 
 
@@ -106,7 +112,6 @@ def extract_ocr_words(ocr_text: str) -> set:
     words = re.findall(r'[A-Za-zА-Яа-яЁё0-9]+', ocr_text)
     result = set()
     
-    # Словарь известных исключений, чтобы OCR слова сразу маппились в правильную кириллицу
     KNOWN_ALIASES = {
         "RIESLING": ["РИСЛИНГ", "RISLING"],
         "CHARDONNAY": ["ШАРДОНЕ", "SHARDONE"],
@@ -125,6 +130,8 @@ def extract_ocr_words(ocr_text: str) -> set:
     }
     
     for w in words:
+        if w.isdigit():
+            continue
         norm = normalize_word(w)
         if len(norm) >= 2:
             result.add(norm)
@@ -133,11 +140,9 @@ def extract_ocr_words(ocr_text: str) -> set:
             elif not is_cyrillic(w):
                 result.add(latin_to_cyrillic(w).upper())
                 
-            # Добавляем алиасы, если слово известно
             if norm in KNOWN_ALIASES:
                 for alias in KNOWN_ALIASES[norm]:
                     result.add(alias)
-    return result
     return result
 def get_word_weight(word: str, brand_words: set = None) -> float:
     w = word.upper()
@@ -179,6 +184,36 @@ def compute_divisor(matched_weight: float, total_weight: float) -> int:
         return 4
 
 
+# --- Простой режим (simple_decision): SigLIP + различающиеся слова среди соседей ---
+SIMPLE_MARGIN = 2.0   # пунктов эмбеддинга (score*100): кто считается «соседом» лидера
+SIMPLE_HIT = 1.0      # + за каждое различающееся слово slug, найденное в OCR
+SIMPLE_MISS = 0.5     # доля штрафа за ненайденное (штраф = SIMPLE_HIT * SIMPLE_MISS)
+
+
+def _slug_tokens(slug: str) -> List[str]:
+    # В отличие от extract_slug_words, цифры сохраняем (год, 7030/5050)
+    return [t for t in re.split(r'[-_]', slug) if len(t) >= 2]
+
+
+def _token_variants(tok: str) -> set:
+    t = tok.upper()
+    return {t, (cyrillic_to_latin(t) if is_cyrillic(t) else latin_to_cyrillic(t)).upper()}
+
+
+def _token_in_ocr(tok: str, ocr_words: set, ocr_no_spaces: str) -> bool:
+    import difflib
+    for v in _token_variants(tok):
+        if v in ocr_words:
+            return True
+        if len(v) >= 4 and v in ocr_no_spaces:
+            return True
+        if len(v) >= 5:
+            for o in ocr_words:
+                if len(o) >= 4 and difflib.SequenceMatcher(None, v, o).ratio() >= 0.85:
+                    return True
+    return False
+
+
 class VinaStudioMatcher:
     def __init__(self, catalog):
         self.catalog = catalog
@@ -190,29 +225,69 @@ class VinaStudioMatcher:
                 self.slug_to_name[slug] = name
         print(f"[VinaStudioMatcher] Загружено {len(self.slug_to_name)} slug → name")
     
-    def compute_ocr_bonus(self, slug: str, ocr_words: set) -> Tuple[int, int, int, List[str]]:
-        slug_words = extract_slug_words(slug)
+    def compute_ocr_bonus(self, slug: str, ocr_words: set, ocr_text: str = "") -> Tuple[int, int, int, List[str]]:
+        import difflib
+        slug_word_groups = extract_slug_words(slug)
         
         brand_words = set()
         wine_info = self.catalog.get_wine(slug)
         if wine_info and wine_info.get("winery"):
             brand_words.update(extract_ocr_words(wine_info["winery"]))
             
-        total_words = len(slug_words)
-        total_weight = sum(get_word_weight(sw, brand_words) for sw in slug_words)
+        total_words = len(slug_word_groups)
+        total_weight = 0.0
+        
+        for group in slug_word_groups:
+            # Вес берется по первому варианту (оригиналу)
+            total_weight += get_word_weight(group[0], brand_words)
+        
+        # Склеенный текст OCR без пробелов для поиска разбитых слов (напр. A B R A U)
+        ocr_no_spaces = "".join([w for w in ocr_text.upper() if w.isalnum()])
         
         matched = []
         matched_weight = 0.0
         
-        for sw in slug_words:
-            weight = get_word_weight(sw, brand_words)
-            if sw in ocr_words:
-                matched.append(sw)
-                matched_weight += weight
+        for group in slug_word_groups:
+            group_matched = False
+            matched_variant = ""
+            
+            for sw in group:
+                is_match = False
+                
+                # Точное совпадение
+                if sw in ocr_words:
+                    is_match = True
+                
+                # Поиск слова в склеенном тексте (решает разрывы букв A B R A U -> ABRAU)
+                if not is_match and len(sw) >= 5 and sw in ocr_no_spaces:
+                    is_match = True
+                
+                # Fuzzy match (расстояние Левенштейна / сходство)
+                if not is_match and len(sw) >= 4:
+                    for ocr_w in ocr_words:
+                        if len(ocr_w) < 4:
+                            continue
+                        ratio = difflib.SequenceMatcher(None, sw, ocr_w).ratio()
+                        # Если длина >= 8, прощаем больше опечаток (0.65+). 
+                        # Если >= 6, (0.75+). Если короче, строже (0.8+)
+                        if (len(sw) >= 8 and ratio >= 0.65) or \
+                           (len(sw) >= 6 and len(sw) < 8 and ratio >= 0.75) or \
+                           (len(sw) < 6 and ratio >= 0.8):
+                            is_match = True
+                            break
+                            
+                if is_match:
+                    group_matched = True
+                    matched_variant = sw
+                    break # Слово совпало по одному из вариантов, дальше не ищем
+                    
+            if group_matched:
+                matched.append(matched_variant)
+                matched_weight += get_word_weight(group[0], brand_words)
         
         match_count = len(matched)
         divisor = compute_divisor(matched_weight, total_weight)
-        return divisor, match_count, total_words, matched
+        return divisor, match_count, total_words, matched, matched_weight
     
     def cascade_decision(self, ocr_text: str, siglip_results: List[Dict], min_tags_threshold: int = 3) -> Dict:
         """
@@ -238,7 +313,7 @@ class VinaStudioMatcher:
             raw_score = float(candidate.get("score", 0.0))
             emb_confidence = max(0.0, min(100.0, (raw_score + 1.0) / 2.0 * 100.0))
             
-            divisor, match_count, total_words, matched_words = self.compute_ocr_bonus(slug, ocr_words)
+            divisor, match_count, total_words, matched_words, matched_weight = self.compute_ocr_bonus(slug, ocr_words, ocr_text)
             
             heuristics_score = 0.0
             wine_info = self.catalog.get_wine(slug) or {}
@@ -285,6 +360,9 @@ class VinaStudioMatcher:
                 ocr_bonus = 0.0
             else:
                 ocr_bonus = (100.0 - emb_confidence) / divisor
+                # Добавляем небольшой линейный бонус за каждый совпавший вес,
+                # чтобы различать кандидатов, попавших в один divisor
+                ocr_bonus += matched_weight * 1.5
                 
             # Временно отключаем штраф за полное несовпадение названия (name_penalty)
             # из-за проблем с транслитерацией (например SAPERAVI в OCR и Саперави в базе)
@@ -336,4 +414,71 @@ class VinaStudioMatcher:
             "total_words": best["total_words"],
             "matched_words": best["matched_words"],
             "candidates": scored_candidates,
+        }
+
+    def simple_decision(self, ocr_text: str, siglip_results: List[Dict]) -> Dict:
+        """
+        Простой режим (замена каскада v4, подобран на 92 размеченных фото, CV ~ +3 фото к SigLIP).
+        1. Базовый балл = score SigLIP * 100.
+        2. «Соседи» = кандидаты в пределах SIMPLE_MARGIN от лидера. Если соседей > 1,
+           для каждого берутся слова slug, которых нет у ВСЕХ соседей (различающие),
+           и сверяются с OCR (включая цифры): +SIMPLE_HIT за найденное, −SIMPLE_HIT*SIMPLE_MISS за нет.
+        3. Победитель — максимум. Цвет, резерв, divisor и clamp не используются.
+        Уверенность НЕ откалибрована: растёт с разрывом между 1-м и 2-м кандидатом.
+        """
+        cands = list(siglip_results or [])
+        if not cands:
+            return {"slug": None, "confidence_embedding": 0.0, "ocr_bonus": 0.0,
+                    "final_confidence": 0.0, "decision_source": "empty", "candidates": []}
+
+        ocr_words = {t.upper() for t in re.findall(r'[A-Za-zА-Яа-яЁё0-9]+', ocr_text or "")}
+        ocr_words |= extract_ocr_words(ocr_text)
+        ocr_ns = "".join(ch for ch in (ocr_text or "").upper() if ch.isalnum())
+
+        embs = [float(c.get("score", 0.0)) * 100.0 for c in cands]
+        top = max(embs)
+        neigh = [i for i, e in enumerate(embs) if e >= top - SIMPLE_MARGIN]
+        common = set()
+        if len(neigh) > 1:
+            common = set.intersection(*[{t.upper() for t in _slug_tokens(cands[i]["slug"])} for i in neigh])
+
+        scored = []
+        for i, c in enumerate(cands):
+            slug = c["slug"]
+            hits, miss = [], 0
+            if len(neigh) > 1 and i in neigh:
+                for t in _slug_tokens(slug):
+                    if t.upper() in common:
+                        continue
+                    if _token_in_ocr(t, ocr_words, ocr_ns):
+                        hits.append(t.upper())
+                    else:
+                        miss += 1
+            bonus = SIMPLE_HIT * (len(hits) - SIMPLE_MISS * miss)
+            scored.append({
+                "slug": slug,
+                "name": self.slug_to_name.get(slug, ""),
+                "raw_score": float(c.get("score", 0.0)),
+                "confidence_embedding": round(embs[i], 2),
+                "ocr_bonus": round(bonus, 2),
+                "divisor": 0,
+                "raw_final_confidence": embs[i] + bonus,
+                "match_count": len(hits),
+                "total_words": len(hits) + miss,
+                "matched_words": hits,
+            })
+        scored.sort(key=lambda x: -x["raw_final_confidence"])
+        gap = scored[0]["raw_final_confidence"] - (scored[1]["raw_final_confidence"] if len(scored) > 1 else 0.0)
+        conf = max(50.0, min(99.0, 50.0 + 10.0 * gap))
+        for s in scored:
+            s["final_confidence"] = round(conf if s is scored[0] else max(0.0, conf - 10.0 * gap - 1.0), 2)
+        best = scored[0]
+        return {
+            "slug": best["slug"], "name": best["name"],
+            "confidence_embedding": best["confidence_embedding"],
+            "ocr_bonus": best["ocr_bonus"], "divisor": 0,
+            "final_confidence": best["final_confidence"],
+            "decision_source": "simple_neighbors_ocr" if len(neigh) > 1 else "simple_embedding",
+            "match_count": best["match_count"], "total_words": best["total_words"],
+            "matched_words": best["matched_words"], "candidates": scored,
         }
