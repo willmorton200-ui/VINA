@@ -333,7 +333,7 @@ class CylindricalDewarpEngine:
         
         # 1. Localization & Cropping of Single Largest Label Mask
         t0 = time.perf_counter()
-        cropped_bgr, cropped_mask, _ = self.stage1.segment_bottle_and_label(img_bgr)
+        cropped_bgr, cropped_mask, bbox_info = self.stage1.segment_bottle_and_label(img_bgr)
         cropped_mask = self.stage1._keep_largest_component(cropped_mask)
         timings["stage1_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
 
@@ -421,6 +421,71 @@ class CylindricalDewarpEngine:
                             print(f"[Microscope] Found new text in bottom zone: '{' '.join(new_words)}'")
         except Exception as e:
             print(f"[Microscope] Error: {e}")
+
+        # --- MULTI-LABEL VERTICAL STITCHING & OCR: Process and dewarp additional labels ---
+        try:
+            bottle_labels = bbox_info.get("bottle_labels", [])
+            # Сортируем все наклейки строго по вертикали (сверху вниз по Y-координате)
+            sorted_labels = sorted(bottle_labels, key=lambda l: l["box"][1])
+
+            if len(sorted_labels) > 1:
+                dewarped_segments = []
+                # Находим соответствие или выпрямляем каждую наклейку
+                for l_idx, lbl in enumerate(sorted_labels):
+                    sbx1, sby1, sbx2, sby2 = lbl["box"]
+                    # Если это первичная и уже выпрямлена - используем её результат
+                    if lbl.get("is_primary", False) and dewarped_display is not None and dewarped_display.size > 0:
+                        dewarped_segments.append(dewarped_display)
+                    else:
+                        spad = 12
+                        sx0, sy0 = max(0, sbx1 - spad), max(0, sby1 - spad)
+                        sx1, sy1 = min(w_orig, sbx2 + spad), min(h_orig, sby2 + spad)
+                        sec_crop_bgr = img_bgr[sy0:sy1, sx0:sx1]
+
+                        sec_mask = lbl.get("mask")
+                        if sec_mask is not None:
+                            sec_crop_mask = sec_mask[sy0:sy1, sx0:sx1]
+                        else:
+                            sec_crop_mask = np.ones((sy1 - sy0, sx1 - sx0), dtype=np.uint8) * 255
+
+                        try:
+                            sec_res = self._dewarp_single_tier(sec_crop_bgr, sec_crop_mask)
+                            sec_dew = sec_res.get("dewarped")
+                            if sec_dew is not None and sec_dew.size > 0:
+                                dewarped_segments.append(sec_dew)
+                                # Дополняем распознанный текст со второй этикетки
+                                sec_txt_raw = sec_res["ocr_dew"]["full_text"]
+                                if sec_txt_raw.strip():
+                                    sec_txt_cor, _ = self.lexicon.correct_text(sec_txt_raw)
+                                    existing_words = set(selected_text.upper().split())
+                                    new_sec_words = [w for w in sec_txt_cor.split() if w.upper() not in existing_words and len(w) > 1]
+                                    if new_sec_words:
+                                        selected_text = selected_text + " " + " ".join(new_sec_words)
+                        except Exception as e_sec:
+                            print(f"[MultiLabel] Dewarping segment #{l_idx+1} warning: {e_sec}")
+                            dewarped_segments.append(sec_crop_bgr)
+
+                # Если успешно получено несколько сегментов, сшиваем по вертикали
+                if len(dewarped_segments) > 1:
+                    max_w = max(seg.shape[1] for seg in dewarped_segments)
+                    aligned_segments = []
+                    for seg in dewarped_segments:
+                        sh, sw = seg.shape[:2]
+                        if sw != max_w:
+                            seg = cv2.resize(seg, (max_w, int(sh * (max_w / float(sw)))))
+                        aligned_segments.append(seg)
+
+                    # Разделитель между этикетками (20 пикселей)
+                    gap = np.zeros((20, max_w, 3), dtype=np.uint8)
+                    stacked_result = aligned_segments[0]
+                    for seg in aligned_segments[1:]:
+                        stacked_result = np.vstack([stacked_result, gap, seg])
+
+                    dewarped_display = stacked_result
+                    print(f"[MultiLabel] Successfully stitched {len(dewarped_segments)} labels vertically. New canvas shape: {dewarped_display.shape}")
+
+        except Exception as e:
+            print(f"[MultiLabel] Vertical stitching error: {e}")
 
         total_ms = round((time.perf_counter() - start_total) * 1000.0, 1)
         timings["total_ms"] = total_ms

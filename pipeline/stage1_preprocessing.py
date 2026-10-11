@@ -26,7 +26,7 @@ def _get_model_path(abs_path: str, relative_fallback: str) -> Path:
         return p
     return Path(__file__).resolve().parent.parent / "models" / relative_fallback
 
-TRAINED_WEIGHTS = _get_model_path(r"D:\models\trained\antigravity_train\train_1786971446\weights\best.pt", r"best.pt")
+TRAINED_WEIGHTS = _get_model_path(r"d:\VINA\models\best_v2_100bottles.pt", r"best_v2_100bottles.pt")
 WORLD_WEIGHTS = _get_model_path(r"D:\models\yolov8s-worldv2.pt", r"yolov8s-worldv2.pt")
 GENERIC_WEIGHTS = _get_model_path(r"D:\VINA\yolov8n-seg.pt", r"yolov8n-seg.pt")
 
@@ -81,6 +81,7 @@ class Stage1Preprocessor:
         num_bottles = 0
         dominant_label_bbox = None
         dominant_bottle_bbox = None
+        bottle_labels_list = []
         yolo_label_mask = None
         yolo_detections = []
         
@@ -100,38 +101,107 @@ class Stage1Preprocessor:
                     for idx, (box, conf, cls_id) in enumerate(zip(boxes, confs, classes)):
                         cls_int = int(cls_id)
                         cls_name = self.yolo_model.names.get(cls_int, f"class_{cls_int}")
-                        yolo_detections.append({
+                        bx1, by1, bx2, by2 = [int(v) for v in box]
+                        bw_box, bh_box = max(1, bx2 - bx1), max(1, by2 - by1)
+                        area = bw_box * bh_box
+
+                        det_entry = {
+                            "idx": idx,
                             "class_id": cls_int,
                             "class_name": cls_name,
                             "confidence": float(conf),
-                            "box": [int(v) for v in box]
-                        })
+                            "box": [bx1, by1, bx2, by2],
+                            "bw": bw_box,
+                            "bh": bh_box,
+                            "area": area,
+                            "cx": (bx1 + bx2) / 2.0,
+                            "cy": (by1 + by2) / 2.0
+                        }
+                        yolo_detections.append(det_entry)
 
-                        # Check for label (class 0 in trained model or 'label' in name)
-                        if cls_int == 0 or "label" in cls_name.lower():
-                            label_candidates.append((idx, box, conf))
-                        # Check for bottle (class 1 in trained model or 39 in COCO or 'bottle' in name)
-                        elif cls_int in (1, 39) or "bottle" in cls_name.lower():
-                            bottle_candidates.append((idx, box, conf))
+                        # Check for bottle (class 1 in new model, 39 in COCO, or 'bottle' without 'label')
+                        if (cls_int == 1 or cls_int == 39 or "bottle" in cls_name.lower()) and "label" not in cls_name.lower():
+                            bottle_candidates.append(det_entry)
+                        # Check for label (class 0 in new model or 'label' in name)
+                        elif cls_int == 0 or "label" in cls_name.lower():
+                            label_candidates.append(det_entry)
+
+                    # Reclassify/promote false labels that are actually bottle bodies:
+                    # Если объект имеет высоту > 70% кадра или площадь > 40% кадра и уходит под верхний край (горлышко),
+                    # это физически тело бутылки, а не наклейка!
+                    reclassified_bottles = []
+                    true_label_candidates = []
+                    for cand in label_candidates:
+                        bx1, by1, bx2, by2 = cand["box"]
+                        bw_box, bh_box = cand["bw"], cand["bh"]
+                        area = cand["area"]
+                        is_likely_bottle = (bh_box >= 0.70 * h or area >= 0.45 * (w * h)) and (by1 <= 0.10 * h)
+                        if is_likely_bottle:
+                            cand["class_id"] = 1
+                            cand["class_name"] = "bottle"
+                            reclassified_bottles.append(cand)
+                        else:
+                            true_label_candidates.append(cand)
+
+                    bottle_candidates.extend(reclassified_bottles)
+                    label_candidates = true_label_candidates
 
                     num_bottles = max(len(bottle_candidates), 1 if label_candidates else 0)
 
-                    # Filter candidates: Apply geometry, confidence-weighting, and hierarchical nested suppression
-                    parsed_candidates = []
+                    # 1.1 Выбираем центральную бутылку (ближайшую к центру кадра с адекватным размером)
+                    selected_bottle = None
+                    if bottle_candidates:
+                        valid_bottles = [b for b in bottle_candidates if b["bh"] >= 0.10 * h and b["area"] >= 0.01 * (w * h)]
+                        if not valid_bottles:
+                            valid_bottles = bottle_candidates
 
-                    for idx, box, conf in label_candidates:
-                        bx1, by1, bx2, by2 = [int(v) for v in box]
-                        bw_box, bh_box = max(1, bx2 - bx1), max(1, by2 - by1)
+                        center_pt = np.array([w / 2.0, h / 2.0])
+                        for b in valid_bottles:
+                            dist = np.hypot(b["cx"] - center_pt[0], b["cy"] - center_pt[1])
+                            b["center_dist"] = dist
+                            b["bottle_score"] = dist / (np.sqrt(b["area"]) + 1e-5)
+
+                        valid_bottles.sort(key=lambda item: item["bottle_score"])
+                        selected_bottle = valid_bottles[0]
+                        dominant_bottle_bbox = selected_bottle["box"]
+
+                    # 1.2 Фильтруем наклейки по принадлежности к выбранной бутылке
+                    parsed_candidates = []
+                    for cand in label_candidates:
+                        idx = cand["idx"]
+                        bx1, by1, bx2, by2 = cand["box"]
+                        bw_box, bh_box = cand["bw"], cand["bh"]
                         ar = bw_box / float(bh_box)
-                        area = bw_box * bh_box
-                        
-                        # Basic sanity filters
-                        if ar < 0.15 or ar > 3.5:
+                        area = cand["area"]
+                        conf = cand["confidence"]
+
+                        # Базовые sanity-фильтры наклейки
+                        if ar < 0.10 or ar > 4.5:
                             continue
-                        if bw_box > 0.90 * w or bh_box > 0.92 * h:
+                        if bw_box > 0.95 * w or bh_box > 0.85 * h:
                             continue
-                        if area < 0.005 * (w * h):
+                        if area < 0.003 * (w * h):
                             continue
+
+                        # Проверка принадлежности к центральной бутылке
+                        containment = 1.0
+                        if selected_bottle is not None:
+                            bbx1, bby1, bbx2, bby2 = selected_bottle["box"]
+                            margin_x = int(0.08 * selected_bottle["bw"])
+                            margin_y = int(0.08 * selected_bottle["bh"])
+                            ebx1, eby1 = max(0, bbx1 - margin_x), max(0, bby1 - margin_y)
+                            ebx2, eby2 = min(w, bbx2 + margin_x), min(h, bby2 + margin_y)
+
+                            ix1, iy1 = max(bx1, ebx1), max(by1, eby1)
+                            ix2, iy2 = min(bx2, ebx2), min(by2, eby2)
+                            if ix2 > ix1 and iy2 > iy1:
+                                inter_area = (ix2 - ix1) * (iy2 - iy1)
+                                containment = inter_area / float(area)
+                            else:
+                                containment = 0.0
+
+                            if containment < 0.55:
+                                continue
 
                         m_full = None
                         total_contact = 0
@@ -139,36 +209,26 @@ class Stage1Preprocessor:
                             m_raw = masks_data[idx]
                             m_full = (cv2.resize(m_raw, (w, h)) > 0.5).astype(np.uint8) * 255
                             m_full = self._keep_largest_component(m_full)
-                            
+
                             top_contact = np.count_nonzero(m_full[:2, :])
                             bot_contact = np.count_nonzero(m_full[h-2:, :])
                             left_contact = np.count_nonzero(m_full[:, :2])
                             right_contact = np.count_nonzero(m_full[:, w-2:])
                             total_contact = top_contact + bot_contact + left_contact + right_contact
-                            
-                            # Второе правило: не выбирать маску, которая пересекается с краями фото более чем на 20%
-                            if total_contact > 0.20 * 4 * (w + h):
+
+                            if total_contact > 0.25 * 4 * (w + h):
                                 continue
 
                         touches_border = (bx1 <= 10 or by1 <= 10 or bx2 >= w - 10 or by2 >= h - 10)
-                        
-                        cx, cy = int((bx1 + bx2) / 2), int((by1 + by2) / 2)
+                        cx, cy = int(cand["cx"]), int(cand["cy"])
                         if m_full is not None:
                             M = cv2.moments(m_full)
                             if M["m00"] != 0:
                                 cx = int(M["m10"] / M["m00"])
                                 cy = int(M["m01"] / M["m00"])
-                                
+
                         in_central_third = (w / 3.0 <= cx <= 2.0 * w / 3.0) and (h / 3.0 <= cy <= 2.0 * h / 3.0)
-                        
-                        # 1. Первый критерий: центр тяжести строго в центральной трети!
-                        # (Проверка перенесена ниже, чтобы не отбрасывать все маски, если ни одна не попала в центр)
-                            
-                        # 2. Исключаем маски бутылки (если высота маски больше 70% от высоты кадра и это не макро-снимок)
-                        # Либо если площадь маски слишком огромна, а соотношение сторон типично для бутылки
-                        if bh_box > 0.70 * h and ar < 0.6:
-                            continue
-                            
+
                         parsed_candidates.append({
                             "idx": idx,
                             "box": [bx1, by1, bx2, by2],
@@ -180,18 +240,39 @@ class Stage1Preprocessor:
                             "mask": m_full,
                             "total_contact": total_contact,
                             "touches_border": touches_border,
-                            "in_central_third": in_central_third
+                            "in_central_third": in_central_third,
+                            "containment": float(containment)
                         })
 
-                    # Hierarchical nested suppression: if Candidate A is an oversized container enclosing Candidate B (e.g. bottle body enclosing label),
-                    # and B has high confidence, suppress container A.
+                    # Если из-за жесткой фильтрации бутылки отсеялись все наклейки, берем исходные
+                    if not parsed_candidates and label_candidates:
+                        for cand in label_candidates:
+                            idx = cand["idx"]
+                            m_full = None
+                            if masks_data is not None and idx < len(masks_data):
+                                m_raw = masks_data[idx]
+                                m_full = (cv2.resize(m_raw, (w, h)) > 0.5).astype(np.uint8) * 255
+                                m_full = self._keep_largest_component(m_full)
+                            parsed_candidates.append({
+                                "idx": idx,
+                                "box": cand["box"],
+                                "bw": cand["bw"],
+                                "bh": cand["bh"],
+                                "ar": cand["bw"] / float(cand["bh"]),
+                                "area": cand["area"],
+                                "conf": cand["confidence"],
+                                "mask": m_full,
+                                "total_contact": 0,
+                                "touches_border": False,
+                                "in_central_third": True,
+                                "containment": 1.0
+                            })
+
+                    # Nested suppression: если Candidate A почти полностью включает Candidate B и существенно больше,
+                    # Candidate A - это тело бутылки, а не этикетка!
                     suppressed_indices = set()
                     for i, c_a in enumerate(parsed_candidates):
                         ax1, ay1, ax2, ay2 = c_a["box"]
-                        # Only whole bottle bodies (spanning majority of frame height/area) are containers
-                        is_container = (c_a["bh"] >= 0.75 * h or c_a["area"] >= 0.50 * (w * h))
-                        if not is_container:
-                            continue
                         for j, c_b in enumerate(parsed_candidates):
                             if i == j:
                                 continue
@@ -200,71 +281,41 @@ class Stage1Preprocessor:
                             ix2, iy2 = min(ax2, bx2), min(ay2, by2)
                             if ix2 > ix1 and iy2 > iy1:
                                 inter_area = (ix2 - ix1) * (iy2 - iy1)
-                                if inter_area >= 0.70 * c_b["area"] and c_a["area"] >= 1.5 * c_b["area"]:
-                                    if c_b["conf"] >= c_a["conf"] - 0.15:
-                                        suppressed_indices.add(i)
-
-                    # Partial horizontal sub-candidate suppression:
-                    # If Candidate A and Candidate B have high vertical overlap (>=80%), but Candidate B
-                    # is substantially wider (>=1.20x bw) and encompasses A (e.g. B includes the shaded flank and graphics),
-                    # suppress the partial highlight fragment A.
-                    for i, c_a in enumerate(parsed_candidates):
-                        if i in suppressed_indices:
-                            continue
-                        ay1, ay2 = c_a["box"][1], c_a["box"][3]
-                        for j, c_b in enumerate(parsed_candidates):
-                            if i == j or j in suppressed_indices:
-                                continue
-                            by1, by2 = c_b["box"][1], c_b["box"][3]
-                            iy1, iy2 = max(ay1, by1), min(ay2, by2)
-                            if iy2 > iy1:
-                                vert_overlap = (iy2 - iy1) / max(min(c_a["bh"], c_b["bh"]), 1)
-                                if vert_overlap >= 0.80:
-                                    if c_b["bw"] >= 1.20 * c_a["bw"] and c_b["area"] > c_a["area"] and c_b["conf"] >= c_a["conf"] - 0.15:
-                                        suppressed_indices.add(i)
+                                if inter_area >= 0.70 * c_b["area"] and c_a["area"] >= 1.4 * c_b["area"]:
+                                    suppressed_indices.add(i)
 
                     valid_candidates = [c for i, c in enumerate(parsed_candidates) if i not in suppressed_indices]
                     if not valid_candidates:
                         valid_candidates = parsed_candidates
 
                     if valid_candidates:
-                        max_conf_overall = max(c["conf"] for c in valid_candidates)
-                        # Если хотя бы одна маска попала в центральную треть И имеет адекватную уверенность, оставляем только их.
-                        # Иначе (никто не попал или попал только мусор) - выбираем из всех (позже по площади/скору).
-                        central_candidates = [
-                            c for c in valid_candidates 
-                            if c["in_central_third"] and c["conf"] >= max(0.4, max_conf_overall - 0.3)
-                        ]
-                        
-                        if central_candidates:
-                            valid_candidates = central_candidates
-
                         max_conf = max(c["conf"] for c in valid_candidates)
                         for c in valid_candidates:
                             bx1, by1, bx2, by2 = c["box"]
                             cx_box = (bx1 + bx2) / 2.0
                             dist_ratio = abs(cx_box - w / 2.0) / (w / 2.0)
                             centrality_weight = max(0.2, 1.0 - 0.5 * dist_ratio)
+                            conf_weight = (c["conf"] / max(max_conf, 1e-4)) ** 1.5
                             
-                            # Border penalty ONLY applies to thin border slivers (not genuine large labels)
-                            is_thin_sliver = (c["bw"] < 0.22 * w) and (c["touches_border"] or c["total_contact"] > 25)
-                            border_penalty = 0.20 if is_thin_sliver else 1.0
-                            conf_weight = (c["conf"] / max(max_conf, 1e-4)) ** 2
-                            
-                            # Aspect ratio plausibility factor (labels typically 0.40 <= ar <= 2.2)
-                            if 0.40 <= c["ar"] <= 2.2:
-                                ar_weight = 1.0
-                            elif 0.25 <= c["ar"] < 0.40:
-                                ar_weight = 0.7
-                            else:
-                                ar_weight = 0.4
-                                
-                            c["score"] = (c["area"] ** 0.5) * conf_weight * centrality_weight * border_penalty * ar_weight
+                            # Главной наклейкой (primary) считаем наибольшую этикетку на теле
+                            c["score"] = (c["area"] ** 0.6) * conf_weight * centrality_weight * c["containment"]
 
+                        # Сортируем: на 0 месте самая большая/значимая наклейка
                         valid_candidates.sort(key=lambda item: item["score"], reverse=True)
                         winner = valid_candidates[0]
                         dominant_label_bbox = winner["box"]
                         yolo_label_mask = winner["mask"]
+
+                        # Сохраняем все наклейки центральной бутылки для OCR и выпрямления
+                        bottle_labels_list = []
+                        for c in valid_candidates:
+                            bottle_labels_list.append({
+                                "box": c["box"],
+                                "conf": c["conf"],
+                                "area": c["area"],
+                                "mask": c["mask"],
+                                "is_primary": (c is winner)
+                            })
 
             except Exception as e:
                 print(f"[Stage1] YOLO detection error: {e}")
@@ -340,6 +391,8 @@ class Stage1Preprocessor:
 
         bbox_info = {
             "num_bottles_detected": max(int(num_bottles), 1),
+            "dominant_bottle_bbox": dominant_bottle_bbox,
+            "bottle_labels": bottle_labels_list,
             "crop_x": int(x0), "crop_y": int(y0), 
             "crop_w": int(x1 - x0), "crop_h": int(y1 - y0),
             "orig_w": int(w), "orig_h": int(h),
