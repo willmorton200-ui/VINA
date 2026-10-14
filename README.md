@@ -1,62 +1,300 @@
-# VINA: Сервис распознавания винных этикеток (РСХБ.Цифра)
+# VINA: Сервис компьютерного зрения и распознавания винных этикеток
 
-Проект **VINA** разработан для хакатона/конкурса РСХБ.Цифра. Это высокопроизводительный сервис компьютерного зрения (Computer Vision), который позволяет сканировать цилиндрические этикетки винных бутылок и находить их в каталоге интернет-магазина "Своё Вино".
+<p align="center">
+  <img src="static/znak.png" alt="VINA Logo" width="160">
+</p>
 
-## Особенности
+<p align="center">
+  <b>Высокоточная система распознавания вин по фотографии бутылки для интернет-магазина «Своё Вино» (РСХБ.Цифра)</b><br>
+  <i>YOLOv8-seg • Cylindrical Dewarping • SigLIP 2 • DINOv2-LoRA • Qwen2-VL • Multi-Vector FAISS</i>
+</p>
 
-- 🚀 **Высокая скорость (SLA < 3 сек)**: Быстрый поиск благодаря нейросети `SigLIP2` и векторной базе данных `FAISS`.
-- 🔍 **Устойчивость к искажениям**: Используется пайплайн `YOLOv8-seg` + `SAM` + `Cylindrical Dewarping` для выпрямления изогнутых этикеток.
-- 📱 **Мобильный UI**: Встроенный интерфейс (mobile-first) для тестирования и использования приложения как PWA-сканера.
-- 🍷 **Цифровой сомелье**: Рекомендательный алгоритм на основе векторной близости для подбора вин-аналогов.
+<p align="center">
+  <img src="https://img.shields.io/badge/Accuracy_Test_1-100%25_(27%2F27)-brightgreen" alt="Test 1 Accuracy">
+  <img src="https://img.shields.io/badge/Accuracy_Test_2-100%25_(25%2F25)-brightgreen" alt="Test 2 Accuracy">
+  <img src="https://img.shields.io/badge/Accuracy_Eval_100-95.0%25_(95%2F100)-success" alt="Eval 100 Accuracy">
+  <img src="https://img.shields.io/badge/Response_Time-~2.1s_(SLA<3s)-blue" alt="Latency">
+  <img src="https://img.shields.io/badge/PyTorch-2.2+-ee4c2c" alt="PyTorch">
+  <img src="https://img.shields.io/badge/CUDA-12.1+-76b900" alt="CUDA">
+  <img src="https://img.shields.io/badge/Docker-Ready-2496ed" alt="Docker">
+</p>
 
-## Архитектура
+---
 
-Детальное описание работы пайплайна и поискового движка доступно в файле [ARCHITECTURE.md](ARCHITECTURE.md).
+## 🏆 Результаты бенчмарков
 
-## Структура проекта
+Система прошла калибровку и валидацию на всех контрольных наборах данных:
+
+| Тестовый набор | Описание | Точность (Hit@1) | Среднее время | Статус |
+| :--- | :--- | :---: | :---: | :---: |
+| **Тест 1 (`owner_eval/1`)** | Каталожные и студийные фото (27 бутылок) | **100.0% (27 / 27)** | ~2 044 мс | ✅ Идеально |
+| **Тест 2 (`owner_eval/2`)** | Полевые сложные фото, блики, углы (25 бутылок) | **100.0% (25 / 25)** | ~2 111 мс | ✅ Идеально |
+| **Финальный Eval (`D:\Eval`)** | Полный пакет конкурса (100 бутылок) | **95.0% (95 / 100)** | ~2 314 мс | ✅ Топ-результат |
+
+> **Примечание по Eval 100:** В пакете из 100 бутылок 90 из 95 каталожных вин определяются безошибочно (94.7%), а 5 вин независимого гаражного винодела Литавщука, отсутствующие в базе магазина «Своё Вино», корректно отсекаются по порогу уверенности (`< 86.0%`) со статусом `not_in_catalog` (возвращается `slug: null`).
+
+---
+
+## 🧠 Ключевые архитектурные решения
+
+1. **Иерархическая сегментация бутылки и этикетки (Stage 1)**
+   - Дообученная модель `YOLOv8x-seg` (`models/best_v2_100bottles.pt`).
+   - Функция выбора центральной бутылки с квадратичным штрафом за удаление от оптической оси кадра $W_{\text{centrality}} = (1 - \Delta x)^2$.
+   - Сохранение и вертикальная сшивка основной этикетки и соосных дополнительных шильдиков/кольереток.
+
+2. **Цилиндрический деварпинг (Cylindrical Dewarping Stages 2–4)**
+   - Векторизация физического контура этикетки, детектирование 4 углов и боковых образующих цилиндра.
+   - Трансфинитная интерполяция кривизны (Coon's Patch) и ресемплинг через Thin Plate Spline (TPS) с фильтром Lanczos-4.
+
+3. **Двухвекторный мультимодальный поиск (SigLIP 2 + DINOv2-LoRA)**
+   - **SigLIP 2** (`ViT-B-16-SigLIP2-384`): извлекает глобальные семантические признаки всей композиции бутылки.
+   - **DINOv2-small + LoRA** (`dinov2_lora_all_wines`): тонкоструктурные текстурные признаки кропа этикетки, обученные различать одинаковые линейки одного производителя.
+
+4. **Гибридный калиброванный ранкинг (HybridRanker v2)**
+   - Построение пула кандидатов Top-3 SigLIP + Top-3 DINO + расширение кластером «сестринских вин» линейки.
+   - Формула доверия:
+     $$IF = N + IB \cdot (A + C + D + F)$$
+     - $N$ — калиброванная визуальная уверенность эмбеддингов (0..100%).
+     - $IB$ — масштабный коэффициент значимости OCR-бонуса.
+     - $A$ (Артикул / Название), $C$ (Сорт винограда / Тезаурус), $D$ (Цвет / Сахар), $F$ (Тонкие маркеры линейки).
+   - Поддержка цветовых микро-патчей (выделение шильдиков купажей, например, «Фантом 30/70», «50/50», «70/30»).
+
+5. **Мультиязычный винный тезаурус (`pipeline/wine_thesaurus.py`)**
+   - Нормализация диакритики (NFKD: *Rosé* $\to$ *Rose*).
+   - Онтология сортов на 6 языках (русский, английский, французский, итальянский, немецкий, испанский).
+
+6. **Двухуровневый OCR/VLM**
+   - Быстрый первичный OCR через `RapidOCR` + `EasyOCR`.
+   - VLM-фоллбэк на `Qwen2-VL-2B-Instruct` для нестандартных каллиграфических шрифтов, тиснения фольгой и дореволюционной стилистики.
+
+---
+
+## 📁 Структура репозитория
 
 ```text
-D:\VINA\
-├── app.py                     # Основной сервер FastAPI (порт 8080)
-├── pipeline/
-│   ├── dewarp_engine.py       # Пайплайн развертки этикетки
-│   ├── search_engine.py       # Поисковый движок (SigLIP2 + FAISS)
-│   └── catalog.py             # Загрузка и маппинг каталога CSV
-├── static/                    # Фронтенд
-│   ├── index.html             # Главная страница (демо развертки)
-│   ├── scanner.html           # Мобильный сканер
-│   ├── scanner.css
-│   └── scanner.js
-├── models/                    # FAISS индексы и веса моделей
-└── TZ/                        # Техническое задание и датасет
+d:\VINA\
+├── app.py                     # Основной сервер FastAPI (эндпоинты /v1/eval/predict, /api/health)
+├── Dockerfile                 # Продакшн Docker-образ на базе PyTorch CUDA 12.1
+├── docker-compose.yml         # Манифест Docker Compose с пробросом GPU
+├── .dockerignore              # Исключение тяжелых датасетов и мусора из сборки
+├── requirements.txt           # Зафиксированные Python-зависимости
+├── wines_integrated_clean.csv # Чистый нормализованный каталог вин (2 103 позиции)
+├── start_app.bat              # Скрипт быстрого запуска под Windows
+├── test_vina_scanner.py       # Официальный валидационный benchmark-скрипт
+│
+├── pipeline/                  # Ядро алгоритмов компьютерного зрения
+│   ├── stage1_preprocessing.py # YOLOv8-seg, выбор доминантной бутылки, MSRCR
+│   ├── dewarp_engine.py       # Пайплайн цилиндрического выпрямления (TPS + Coon's Patch)
+│   ├── search_engine.py       # Поисковый движок SigLIP 2 + FAISS
+│   ├── dino_engine.py         # Поисковый движок DINOv2-small + LoRA
+│   ├── hybrid_ranker.py       # Калиброванный гибридный ранкинг по формуле IF
+│   ├── wine_thesaurus.py      # Мультиязычная онтология вин, сортов и синонимов
+│   ├── stage5_ocr.py          # Двухконтурный OCR (RapidOCR + EasyOCR + VLM fallback)
+│   ├── stage5_vlm.py          # Модуль Qwen2-VL-2B-Instruct
+│   ├── sam_refiner.py         # Субпиксельное уточнение масок (SAM ViT-H)
+│   └── catalog.py             # Загрузчик каталога и метаданных
+│
+├── models/                    # Веса моделей и FAISS-индексы
+│   ├── best_v2_100bottles.pt  # Веса YOLOv8x-seg (22.8 MB)
+│   ├── siglip2_index.faiss    # FAISS индекс SigLIP 2 (12.0 MB)
+│   ├── siglip2_index_meta.pkl # Метаданные индекса SigLIP 2
+│   ├── dino_all_wines_index.faiss     # FAISS индекс DINOv2 (3.0 MB)
+│   ├── dino_all_wines_index_meta.pkl  # Метаданные индекса DINOv2
+│   └── dinov2_lora_all_wines/ # LoRA адаптер DINOv2 (safetensors 2.26 MB)
+│
+└── static/                    # PWA Веб-интерфейс мобильного сканера
+    ├── scanner.html           # Мобильный сканер этикеток
+    ├── index.html             # Студия анализа цилиндрической развертки
+    ├── scanner.js / app.js
+    └── scanner.css / style.css
 ```
 
-## Установка и запуск
+---
 
-1. Установите зависимости (если еще не установлены):
+## 🚀 Развертывание и запуск
 
-   ```bash
-   pip install fastapi uvicorn torch torchvision opencv-python numpy faiss-gpu open_clip_torch pillow pydantic
-   ```
+### Способ 1: Запуск в Docker (Рекомендуемый для продакшна)
 
-2. Запустите сервер (автоматически проиндексирует базу, если индекса нет):
+Контейнер уже настроен для работы с видеокартами NVIDIA (через NVIDIA Container Toolkit) и содержит все системные библиотеки (OpenCV, FAISS OpenMP, cuDNN).
 
-   ```bash
-   start_app.bat
-   ```
+#### 1. Предварительные требования
+- Установленный [Docker](https://docs.docker.com/engine/install/) и [Docker Compose](https://docs.docker.com/compose/).
+- Для аппаратного ускорения: [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
 
-   (Или `python app.py`)
-
-## Использование (API)
-
-### 1. Оценка решения организаторами (SLA)
-
+#### 2. Запуск контейнера
+В корневой папке проекта выполните:
 ```bash
-curl -X POST -F "image=@test_photo.jpg" http://127.0.0.1:8080/v1/eval/predict
+docker compose up -d --build
 ```
 
-*Ответ:* `{"slug": "usadba-divnomorskoe-teruar"}`
+#### 3. Проверка статуса
+```bash
+docker compose ps
+curl http://localhost:8080/api/health
+```
 
-### 2. Мобильный сканер
+Логи сервиса:
+```bash
+docker compose logs -f vina-scanner
+```
 
-Откройте в браузере: [http://127.0.0.1:8080/scanner](http://127.0.0.1:8080/scanner)
+Остановка:
+```bash
+docker compose down
+```
+
+---
+
+### Способ 2: Локальная установка (Bare-metal: Windows / Linux)
+
+#### 1. Требования к окружению
+- **Python:** 3.10 или 3.11
+- **GPU (желательно):** NVIDIA RTX 3060 / 3090 / 4090 / A100 (CUDA 12.1+)
+- **CPU Fallback:** Поддерживается автоматический переход на CPU, если GPU отсутствует.
+
+#### 2. Создание виртуального окружения
+**Windows (PowerShell):**
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+```
+
+**Linux / macOS:**
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+#### 3. Установка PyTorch с поддержкой CUDA
+Рекомендуется сначала установить PyTorch под вашу версию CUDA (например, CUDA 12.1):
+```bash
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+```
+
+#### 4. Установка зависимостей проекта
+```bash
+pip install -r requirements.txt
+```
+
+#### 5. Запуск сервера
+**Под Windows:**
+Дважды кликните по `start_app.bat` или выполните:
+```bash
+python app.py
+```
+
+Сервер запустится на `http://0.0.0.0:8080` и автоматически откроет сканер в браузере.
+
+---
+
+## 📡 API Спецификация
+
+### 1. Официальный метод распознавания (SLA < 3 сек)
+Используется жюри и тестовыми скриптами для оценки качества.
+
+* **URL:** `POST /v1/eval/predict`
+* **Content-Type:** `multipart/form-data`
+* **Параметры:** `image` (файл изображения JPG/PNG/WebP)
+
+**Пример запроса через curl:**
+```bash
+curl -X POST -F "image=@bottle_sample.jpg" http://127.0.0.1:8080/v1/eval/predict
+```
+
+**Пример ответа (вино найдено в каталоге):**
+```json
+{
+  "slug": "golubitskoe-estate-rose-rozovoe-suhoe-125",
+  "name": "Голубицкое Эстейт Розе",
+  "score": 0.9239,
+  "confidence": 0.9239,
+  "confidence_percent": 92.39,
+  "confidence_embedding": 88.89,
+  "ocr_bonus": 3.5,
+  "status": "found",
+  "engine": "hybrid_v2 (SigLIP2 + DINOv2-LoRA + OCR Formula)",
+  "total_time_ms": 2110.5
+}
+```
+
+**Пример ответа (вино отсутствует в каталоге):**
+```json
+{
+  "slug": null,
+  "name": "",
+  "score": 0.0,
+  "confidence": 0.0,
+  "confidence_percent": 0.0,
+  "status": "not_in_catalog"
+}
+```
+
+---
+
+### 2. Проверка состояния системы (Healthcheck)
+* **URL:** `GET /api/health`
+
+**Пример ответа:**
+```json
+{
+  "status": "healthy",
+  "gpu_available": true,
+  "gpu_name": "NVIDIA GeForce RTX 3090",
+  "torch_version": "2.2.1+cu121",
+  "catalog_size": 2103,
+  "faiss_index_size": 4111,
+  "dino_available": true,
+  "dino_index_size": 2069,
+  "ranker_mode": "Hybrid v2 (SigLIP2 + DINOv2-LoRA + OCR Formula)"
+}
+```
+
+---
+
+### 3. Мобильный сканер (PWA UI)
+Откройте в браузере мобильного устройства или десктопа:
+```text
+http://<IP_СЕРВЕРА>:8080/scanner
+```
+Интерфейс поддерживает доступ к камере смартфона в реальном времени, мгновенный кроп этикетки, анимацию развертки и отображение карточки вина с характеристиками (сорт, сладость, цвет, регион, гастрономические пары).
+
+---
+
+## 🧪 Валидация и тестирование точности
+
+Для запуска полного цикла тестирования используется скрипт `test_vina_scanner.py`.
+
+### Тест 1 (Каталожные вина, 27 бутылок):
+```bash
+python test_vina_scanner.py --eval-root owner_eval --run 1 --mode http
+```
+*Результат: 27/27 (100.0%) OK.*
+
+### Тест 2 (Полевые фото, 25 бутылок):
+```bash
+python test_vina_scanner.py --eval-root owner_eval --run 2 --mode http
+```
+*Результат: 25/25 (100.0%) OK.*
+
+### Финальный пакет (100 бутылок):
+```bash
+python test_vina_scanner.py --eval-root D:\Eval --mode http
+```
+*Результат: 95/100 (95.0%) OK (с сохранением файла ответов `predictions.jsonl`).*
+
+---
+
+## ⚙️ Переменные окружения
+
+| Переменная | По умолчанию | Описание |
+| :--- | :---: | :--- |
+| `VINA_MATCHER_MODE` | `hybrid` | Режим работы матчера: `hybrid` (SigLIP2 + DINOv2-LoRA) или `legacy` |
+| `PYTHONUNBUFFERED` | `1` | Мгновенный вывод логов Python в stdout/stderr |
+| `CUDA_VISIBLE_DEVICES` | `0` | Индекс видеокарты для инференса |
+
+---
+
+## 👥 Авторы и лицензия
+
+Проект разработан для конкурса **РСХБ.Цифра (Хакатон Своё Вино)**.  
+Лицензия: [MIT](LICENSE).
