@@ -1,51 +1,102 @@
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-*.pt
-*.pth
-*.bin
-*.onnx
-.ipynb_checkpoints/
+*.pyc
+
+# Environments & IDEs
+.venv/
+venv/
+env/
+.env
 .vscode/
 .idea/
+.ipynb_checkpoints/
+
+# Temporary / OS files
+.tmp.driveupload/
+__MACOSX/
+*.tmp
+*.bak
+*.log
+*.lnk
+
+# Scratch, debug scripts, research & analysis tools
+scratch/
+scratch_debug/
+scratch_*.py
+scratch_*.png
+eval_v2_*.py
+analyze_*.py
+calibrate_*.py
+train_*.py
+check_*.py
+create_eval_tasks.py
+generate_segmentation_*.py
+update_eval_editor.py
+eval_editor.py
+
+# Test scripts in root (except official benchmark test_vina_scanner.py)
+test_*.py
+!test_vina_scanner.py
+
+# Test artifacts and debug dumps
+debug_masks/
+eval_results/
 outputs/
+ocr_test_boxes.jpg
+scratch_test_symmetric_fit.png
+test_alpha.webp
+test_rembg_output.webp
+
+# Root loose notes, reports, PDFs, and PNGs
+*.pdf
+*.PNG
+*.txt
+!requirements.txt
+agora-yachting-cabernet-sauvignon.png
+"Оценка полные бокалы.png"
+"Поставь оценку.png"
+
+# Shell/Bat scripts in root (except start_app.bat)
+*.bat
+!start_app.bat
+
+# Heavy datasets and media dumps
+media/
+wines_images_clean/
+owner_eval/
+test_dataset/
 ready_dataset/
 roboflow_bottle_labels/
 roboflow_dataset/
 dataset_for_yolo/
 output_dataset/
-
-# Large dataset archives and raw image dumps
+TZ/**/prod-svoe-vino-strapi/
+TZ/**/__MACOSX/
 *.zip
 *.rar
 *.7z
 *.tar.gz
-TZ/**/prod-svoe-vino-strapi/
-TZ/**/__MACOSX/
-__MACOSX/
 
-# Temporary debug visualizations
-scratch_debug/
-scratch/
-debug_masks/
-eval_results/
-ocr_test_boxes.jpg
-scratch_test_symmetric_fit.png
-test_alpha.webp
-
-# Raw image datasets and media dumps
-media/
-test_dataset/butilki/
-
-# Binaries and tools
+# Binaries
 bin/
 *.exe
 
-# Cloud drive temporary sync files
-.tmp.driveupload/
+# Model weights
+*.pt
+*.pth
+*.bin
+*.onnx
+models/*
 
-# Heavy datasets and images
-wines_images_clean/
-owner_eval/
-test_dataset/
-media/
+# Whitelisted production models (<100MB GitHub limit)
+!models/best_v2_100bottles.pt
+!models/dino_all_wines_index.faiss
+!models/dino_all_wines_index_meta.pkl
+!models/siglip2_index.faiss
+!models/siglip2_index_meta.pkl
+!models/dinov2_lora_all_wines/
+models/dinov2_lora_all_wines/adapter_model.bin
+models/dinov2_lora_all_wines/*.bak
+models/*.bak

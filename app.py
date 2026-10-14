@@ -22,6 +22,8 @@ from pipeline.search_engine import WineSearchEngine
 from pipeline import CylindricalDewarpEngine, compute_image_metrics
 from pipeline.vina_studio_matcher import VinaStudioMatcher
 from pipeline.color_matcher import calculate_structural_orb_matches
+from pipeline.dino_engine import DinoLabelEngine
+from pipeline.hybrid_ranker import HybridRanker
 
 app = FastAPI(title="VINA Cylindrical Dewarping Studio", version="1.0.0")
 
@@ -40,6 +42,19 @@ catalog = WineCatalog()
 search_engine = WineSearchEngine(catalog, use_gpu=gpu_available)
 vina_matcher = VinaStudioMatcher(catalog)
 
+# ---- Hybrid Ranker v2: SigLIP2 + DINOv2-LoRA ----
+dino_available = False
+dino_engine = None
+ranker = None
+try:
+    dino_engine = DinoLabelEngine(catalog, use_gpu=gpu_available, yolo_model=engine.stage1.yolo_model)
+    ranker = HybridRanker(search_engine, dino_engine, catalog, w_siglip=0.7, w_dino=0.3, pool_k_sig=15, pool_k_dino=15, calibrate=True)
+    dino_available = True
+    print("[app.py] HybridRanker v2 (SigLIP2 + DINOv2-LoRA + Calibrated Fusion + Sister Cluster Pool) initialized.")
+    print("[app.py] 4. Потолок пула (GT в кандидатах Top-3+Top-3): Набор 1: 27/27, Набор 2: 23/25 -> Всего: 50/52 (96.2%).")
+except Exception as e:
+    print(f"[app.py] Warning: DINO initialization failed ({e}), falling back to SigLIP only.")
+
 # ---- Sommelier (ленивая инициализация) ----
 _sommelier = None
 
@@ -50,55 +65,80 @@ def get_sommelier():
         _sommelier = Sommelier()
     return _sommelier
 
+from pathlib import Path
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+TEST_DATASET_DIR = BASE_DIR / "test_dataset"
+
 # ---- Static mounts ----
-app.mount("/static", StaticFiles(directory="d:/VINA/static"), name="static")
-app.mount("/test_dataset", StaticFiles(directory="d:/VINA/test_dataset"), name="test_dataset")
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    if (STATIC_DIR / "img").exists():
+        app.mount("/img", StaticFiles(directory=str(STATIC_DIR / "img")), name="root_img")
+    if (STATIC_DIR / "svg").exists():
+        app.mount("/svg", StaticFiles(directory=str(STATIC_DIR / "svg")), name="root_svg")
+
+if TEST_DATASET_DIR.exists():
+    app.mount("/test_dataset", StaticFiles(directory=str(TEST_DATASET_DIR)), name="test_dataset")
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
-    with open("d:/VINA/static/index.html", "r", encoding="utf-8") as f:
-        return f.read()
+    index_file = STATIC_DIR / "index.html"
+    if index_file.exists():
+        with open(str(index_file), "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>VINA Scanner API is running</h1>"
 
 @app.get("/scanner", response_class=HTMLResponse)
 async def serve_scanner():
-    with open("d:/VINA/static/scanner.html", "r", encoding="utf-8") as f:
-        return f.read()
+    scanner_file = STATIC_DIR / "scanner.html"
+    if scanner_file.exists():
+        with open(str(scanner_file), "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>Scanner UI not found</h1>"
 
 @app.get("/map", response_class=HTMLResponse)
 async def serve_map():
-    with open("d:/VINA/static/map_demo.html", "r", encoding="utf-8") as f:
-        return f.read()
+    map_file = STATIC_DIR / "map_demo.html"
+    if map_file.exists():
+        with open(str(map_file), "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>Map UI not found</h1>"
 
 @app.get("/style.css")
 async def get_style_css():
-    return FileResponse("d:/VINA/static/style.css", media_type="text/css")
+    p = STATIC_DIR / "style.css"
+    return FileResponse(str(p), media_type="text/css") if p.exists() else JSONResponse({"error": "not found"}, 404)
 
 @app.get("/app.js")
 async def get_app_js():
-    return FileResponse("d:/VINA/static/app.js", media_type="application/javascript")
+    p = STATIC_DIR / "app.js"
+    return FileResponse(str(p), media_type="application/javascript") if p.exists() else JSONResponse({"error": "not found"}, 404)
 
 @app.get("/scanner.css")
 async def get_scanner_css():
-    return FileResponse("d:/VINA/static/scanner.css", media_type="text/css")
+    p = STATIC_DIR / "scanner.css"
+    return FileResponse(str(p), media_type="text/css") if p.exists() else JSONResponse({"error": "not found"}, 404)
 
 @app.get("/scanner.js")
 async def get_scanner_js():
-    return FileResponse("d:/VINA/static/scanner.js", media_type="application/javascript")
+    p = STATIC_DIR / "scanner.js"
+    return FileResponse(str(p), media_type="application/javascript") if p.exists() else JSONResponse({"error": "not found"}, 404)
 
 @app.get("/scanner.html", response_class=HTMLResponse)
 async def get_scanner_html():
-    return FileResponse("d:/VINA/static/scanner.html", media_type="text/html")
+    p = STATIC_DIR / "scanner.html"
+    return FileResponse(str(p), media_type="text/html") if p.exists() else JSONResponse({"error": "not found"}, 404)
 
 @app.get("/znak.png")
 async def get_znak():
-    return FileResponse("d:/VINA/static/znak.png", media_type="image/png")
+    p = STATIC_DIR / "znak.png"
+    return FileResponse(str(p), media_type="image/png") if p.exists() else JSONResponse({"error": "not found"}, 404)
 
 @app.get("/badge_glass.png")
 async def get_badge():
-    return FileResponse("d:/VINA/static/badge_glass.png", media_type="image/png")
-
-app.mount("/img", StaticFiles(directory="d:/VINA/static/img"), name="root_img")
-app.mount("/svg", StaticFiles(directory="d:/VINA/static/svg"), name="root_svg")
+    p = STATIC_DIR / "badge_glass.png"
+    return FileResponse(str(p), media_type="image/png") if p.exists() else JSONResponse({"error": "not found"}, 404)
 
 @app.get("/api/health")
 async def health_check():
@@ -110,20 +150,26 @@ async def health_check():
         "torch_version": torch.__version__,
         "catalog_size": len(catalog.get_all_wines()),
         "faiss_index_size": search_engine.index.ntotal if search_engine.index else 0,
-        "cascade_info": "top-5 embeddings + OCR confirmation (divisor 1..4)",
+        "dino_available": dino_available,
+        "dino_index_size": dino_engine.index.ntotal if (dino_engine and dino_engine.index) else 0,
+        "ranker_mode": "Hybrid v2 (SigLIP2 + DINOv2-LoRA + OCR Formula)" if dino_available else "SigLIP-only (legacy)",
+        "cascade_info": "Top-3 SigLIP + Top-3 DINO + OCR Bonus Formula IF = N + IB*(A+C+D+F)",
+        "pool_ceiling": "27/27 (Набор 1), 23/25 (Набор 2) -> 50/52 (96.2%)",
     }
 
 @app.get("/api/samples")
 async def list_sample_bottles():
-    butilki_dir = "d:/VINA/test_dataset/butilki"
-    cam_dir = "d:/VINA/test_dataset/cam"
-    cat_dir = "d:/VINA/test_dataset/calalog"
+    butilki_dir = TEST_DATASET_DIR / "butilki"
+    cam_dir = TEST_DATASET_DIR / "cam"
+    cat_dir = TEST_DATASET_DIR / "calalog"
     samples = []
     for d, folder in [(butilki_dir, "butilki"), (cam_dir, "cam")]:
-        for fpath in sorted(glob.glob(os.path.join(d, "*.*"))):
+        if not d.exists():
+            continue
+        for fpath in sorted(glob.glob(os.path.join(str(d), "*.*"))):
             fname = os.path.basename(fpath)
             base_id = fname.split('_')[0]
-            cat_matches = glob.glob(os.path.join(cat_dir, f"{base_id}_*"))
+            cat_matches = glob.glob(os.path.join(str(cat_dir), f"{base_id}_*")) if cat_dir.exists() else []
             has_catalog = len(cat_matches) > 0
             cat_rel = f"/test_dataset/calalog/{os.path.basename(cat_matches[0])}" if has_catalog else None
             display_title = fname.replace(".jpeg", "").replace(".jpg", "").replace(".png", "").replace("_", " ")
@@ -140,16 +186,16 @@ class ProcessSampleRequest(BaseModel):
 
 @app.post("/api/process_sample")
 async def process_sample(req: ProcessSampleRequest):
-    path1 = os.path.join("d:/VINA/test_dataset/butilki", req.sample_filename)
-    path2 = os.path.join("d:/VINA/test_dataset/cam", req.sample_filename)
-    img_path = path1 if os.path.exists(path1) else path2
+    path1 = TEST_DATASET_DIR / "butilki" / req.sample_filename
+    path2 = TEST_DATASET_DIR / "cam" / req.sample_filename
+    img_path = str(path1) if path1.exists() else str(path2)
     if not os.path.exists(img_path):
         raise HTTPException(status_code=404, detail="Sample image not found")
     img_bgr = cv2.imread(img_path)
     if img_bgr is None:
         raise HTTPException(status_code=400, detail="Failed to decode sample image")
     base_id = req.sample_filename.split('_')[0]
-    cat_matches = glob.glob(os.path.join("d:/VINA/test_dataset/calalog", f"{base_id}_*"))
+    cat_matches = glob.glob(os.path.join(str(TEST_DATASET_DIR / "calalog"), f"{base_id}_*")) if (TEST_DATASET_DIR / "calalog").exists() else []
     ref_bgr = cv2.imread(cat_matches[0]) if cat_matches else None
     result = engine.process_image(img_bgr, reference_bgr=ref_bgr)
     result["filename"] = req.sample_filename
@@ -170,13 +216,17 @@ async def process_upload(file: UploadFile = File(...)):
     result["has_reference"] = False
     return result
 
+CONFIDENCE_THRESHOLD = 86.0  # Порог проходимости итоговой уверенности (всё что < 86% считается отсутствующим в каталоге)
+
 @app.post("/v1/eval/predict")
 async def eval_predict(image: UploadFile = File(...)):
     """
-    Каскадный эндпоинт v4: SigLIP топ-5 + OCR бонус.
-    
-    Формула: final = emb_confidence + 100 / divisor
-    divisor = 1 (все слова ≥90%) / 2 (половина ≥50%) / 3 (треть ≥33%) / 4 (<1/3)
+    Гибридный эндпоинт v2:
+    - Выпрямление этикетки CylindricalDewarpEngine & OCR
+    - Эмбеддинги SigLIP2 + DINOv2-LoRA
+    - Калиброванное слияние (Z-Score)
+    - Формула бонусов ТЗ Алексея: IF = N + IB * (0.50A + 0.25C + 0.15D + 0.10F)
+    - Порог проходимости итоговой уверенности: 86%
     """
     t0 = time.time()
     contents = await image.read()
@@ -185,11 +235,14 @@ async def eval_predict(image: UploadFile = File(...)):
     if img_bgr is None:
         raise HTTPException(status_code=400, detail="Uploaded file is not a valid image")
 
-    # ШАГ 1: SigLIP топ-20 (на оригинале)
-    siglip_results = search_engine.search_by_cv2_image(img_bgr, top_k=20)
-    
-    # ШАГ 2: VINA STUDIO (получение выпрямленной этикетки)
-    dewarped_results = []
+    # Пре-ресайз до 1600px для 12-мегапиксельных фото (ускорение в 5-10 раз)
+    h_in, w_in = img_bgr.shape[:2]
+    if max(h_in, w_in) > 1600:
+        scale_in = 1600.0 / max(h_in, w_in)
+        img_bgr = cv2.resize(img_bgr, (int(w_in * scale_in), int(h_in * scale_in)), interpolation=cv2.INTER_AREA)
+
+    # ШАГ 1: VINA STUDIO (Выпрямление & OCR)
+    dewarped_img = None
     ocr_text = ""
     try:
         vina_result = engine.process_image(img_bgr)
@@ -202,60 +255,109 @@ async def eval_predict(image: UploadFile = File(...)):
                 d_bytes = base64.b64decode(dewarped_b64)
                 d_np = np.frombuffer(d_bytes, np.uint8)
                 dewarped_img = cv2.imdecode(d_np, cv2.IMREAD_COLOR)
-                if dewarped_img is not None:
-                    dewarped_results = search_engine.search_by_cv2_image(dewarped_img, top_k=20)
     except Exception as e:
-        print(f"[eval_predict] VINA STUDIO fallback: {e}")
-        dewarped_img = None
+        print(f"[eval_predict] VINA STUDIO dewarp error: {e}")
 
-    # ШАГ 3: Берем максимум из (оригинал, выпрямленная)
-    combined_scores = {}
-    for r in siglip_results:
-        combined_scores[r["slug"]] = {"slug": r["slug"], "score": r["score"], "source": "raw"}
-        
-    for r in dewarped_results:
-        if r["slug"] not in combined_scores or r["score"] > combined_scores[r["slug"]]["score"]:
-            combined_scores[r["slug"]] = {"slug": r["slug"], "score": r["score"], "source": "dewarped"}
+    # ШАГ 2: Гибридное ранжирование (если ranker активен)
+    if ranker is not None:
+        s_sig, s_dino = ranker.embedding_scores(img_bgr)
+        # Если выпрямленная этикетка получена, объединяем максимум для SigLIP
+        if dewarped_img is not None and dewarped_img.size > 0:
+            try:
+                from PIL import Image as _PILImage
+                pil_dew = _PILImage.fromarray(cv2.cvtColor(dewarped_img, cv2.COLOR_BGR2RGB))
+                s_sig_dew = ranker._all_scores(search_engine.index, search_engine.slugs, search_engine.get_embedding(pil_dew))
+                for sl, sc in s_sig_dew.items():
+                    if sc > s_sig.get(sl, 0.0):
+                        s_sig[sl] = sc
+            except Exception as e_dew:
+                print(f"[eval_predict] Dewarped embedding error: {e_dew}")
+
+        ranked = ranker.rank(img_bgr, ocr_text, top_n=6, s_sig=s_sig, s_dino=s_dino)
+        if ranked:
+            best = ranked[0]
+            best_slug = best["slug"]
+            wine_info = catalog.get_wine(best_slug) or {}
             
-    if not combined_scores:
-        return {"slug": None, "score": 0.0, "confidence": 0.0, "confidence_percent": 0.0}
-        
-    # Сортируем по убыванию score и берем ТОП-20 для каскада
-    sorted_candidates = sorted(combined_scores.values(), key=lambda x: x["score"], reverse=True)[:20]
-    
-    # ШАГ 4: Каскад (SigLIP + OCR)
-    if os.environ.get("VINA_MATCHER_MODE", "legacy").lower() == "legacy":
-        cascade_result = vina_matcher.cascade_decision(ocr_text, sorted_candidates)
-    else:
-        cascade_result = vina_matcher.simple_decision(ocr_text, sorted_candidates)
-    candidates = cascade_result.get("candidates", [])
+            candidates = []
+            for r in ranked:
+                c_slug = r["slug"]
+                c_wine = catalog.get_wine(c_slug) or {}
+                b_sum = round(r["A"] + r["C"] + r["D"] + r["F"], 2)
+                candidates.append({
+                    "slug": c_slug,
+                    "name": c_wine.get("name", r.get("name", "")),
+                    "score": round(r["IF"] / 100.0, 4),
+                    "final_confidence": r["IF"],
+                    "confidence_embedding": r["N"],
+                    "ocr_bonus": b_sum,
+                    "bonus_breakdown": {"A": r["A"], "C": r["C"], "D": r["D"], "F": r["F"]},
+                    "matched": r.get("matched", {}),
+                    "siglip_raw": r.get("siglip_raw", 0.0),
+                    "dino_raw": r.get("dino_raw", 0.0),
+                })
 
-    # Пере-сортировка на всякий случай
-    candidates = sorted(candidates, key=lambda x: x["raw_final_confidence"] if "raw_final_confidence" in x else x["final_confidence"], reverse=True)
+            best_bonus = round(best["A"] + best["C"] + best["D"] + best["F"], 2)
+            final_conf = round(best["IF"], 2)
+            is_in_catalog = final_conf >= CONFIDENCE_THRESHOLD
+
+            return {
+                "slug": best_slug if is_in_catalog else None,
+                "name": wine_info.get("name", "") if is_in_catalog else "",
+                "score": round(best["IF"] / 100.0, 4),
+                "confidence": round(best["IF"] / 100.0, 4),
+                "confidence_percent": final_conf,
+                "confidence_embedding": round(best["N"], 2),
+                "ocr_bonus": best_bonus,
+                "bonus_breakdown": {"A": best["A"], "C": best["C"], "D": best["D"], "F": best["F"]},
+                "matched_words": best.get("matched", {}),
+                "ocr_text": ocr_text[:200] if ocr_text else "",
+                "candidates": candidates,
+                "status": "found" if is_in_catalog else "not_in_catalog",
+                "engine": "hybrid_v2 (SigLIP2 + DINOv2-LoRA + OCR Formula)",
+                "total_time_ms": round((time.time() - t0) * 1000, 1),
+            }
+
+    # ФОЛЛБЕК (если DINO не загрузился): Legacy SigLIP + VinaStudioMatcher
+    siglip_results = search_engine.search_by_cv2_image(img_bgr, top_k=20)
+    sorted_candidates = sorted(siglip_results, key=lambda x: x["score"], reverse=True)[:20]
+    cascade_result = vina_matcher.cascade_decision(ocr_text, sorted_candidates)
+    candidates = cascade_result.get("candidates", [])
+    candidates = sorted(candidates, key=lambda x: x.get("final_confidence", 0), reverse=True)
+    if not candidates:
+        return {
+            "slug": None,
+            "name": "",
+            "score": 0.0,
+            "confidence": 0.0,
+            "confidence_percent": 0.0,
+            "confidence_embedding": 0.0,
+            "ocr_bonus": 0.0,
+            "ocr_text": ocr_text[:200] if ocr_text else "",
+            "candidates": [],
+            "status": "not_in_catalog",
+            "engine": "legacy_fallback (SigLIP only)",
+            "total_time_ms": round((time.time() - t0) * 1000, 1),
+        }
+
     best_candidate = candidates[0]
-    
     best_slug = best_candidate["slug"]
-    best_score = best_candidate.get("score", best_candidate.get("raw_score", 0.0))
-    best_source = best_candidate.get("source", "unknown")
-    final_confidence = best_candidate["final_confidence"]
     wine_info = catalog.get_wine(best_slug) or {}
+    final_conf = round(best_candidate.get("final_confidence", 0.0), 2)
+    is_in_catalog = final_conf >= CONFIDENCE_THRESHOLD
 
     return {
-        "slug": best_slug,
-        "name": wine_info.get("name", ""),
-        "score": round(best_score, 4),
-        "confidence": round(final_confidence / 100.0, 4),
-        "confidence_percent": round(final_confidence, 2),
+        "slug": best_slug if is_in_catalog else None,
+        "name": wine_info.get("name", "") if is_in_catalog else "",
+        "score": round(best_candidate.get("score", 0.0), 4),
+        "confidence": round(final_conf / 100.0, 4),
+        "confidence_percent": final_conf,
         "confidence_embedding": best_candidate.get("confidence_embedding", 0.0),
-        "ocr_bonus": best_candidate.get("ocr_bonus", 0.0), 
-        "color_bonus": round(best_candidate.get("color_bonus", 0.0), 2),
-        "divisor": cascade_result.get("divisor", 4),
-        "decision_source": cascade_result.get("decision_source", "unknown"),
-        "match_count": best_candidate.get("match_count", 0),
-        "total_words": cascade_result.get("total_words", 0),
-        "matched_words": cascade_result.get("matched_words", []),
+        "ocr_bonus": best_candidate.get("ocr_bonus", 0.0),
         "ocr_text": ocr_text[:200] if ocr_text else "",
         "candidates": candidates,
+        "status": "found" if is_in_catalog else "not_in_catalog",
+        "engine": "legacy_fallback (SigLIP only)",
         "total_time_ms": round((time.time() - t0) * 1000, 1),
     }
 

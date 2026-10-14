@@ -12,13 +12,17 @@ import numpy as np
 import torch
 
 class Stage5OCRDecoder:
-    def __init__(self, languages=['ru', 'en'], use_gpu=True):
+    def __init__(self, languages=['ru', 'en'], use_gpu=True, enable_vlm_fallback=True, primary_engine: str = "hybrid"):
         self.use_gpu = use_gpu and torch.cuda.is_available()
         self.languages = languages
+        self.enable_vlm_fallback = enable_vlm_fallback
+        self.primary_engine = primary_engine  # 'vlm' (100% GPU Qwen2-VL) or 'hybrid' (classic + VLM fallback)
+        self.vlm = None
         self.rapid_ocr = None
         self.easy_ru = None
         self.easy_en = None
-        self._init_engines()
+        if self.primary_engine != "vlm":
+            self._init_engines()
         
         # OpenCV QR & Barcode detectors
         self.qr_detector = cv2.QRCodeDetector()
@@ -55,12 +59,36 @@ class Stage5OCRDecoder:
     def extract_text(self, img_bgr: np.ndarray) -> list[dict]:
         """
         Extracts structured text blocks with coordinates, confidence scores, and content.
-        Uses RapidOCR for multilingual base and EasyOCR for targeted Cyrillic enhancement.
+        If primary_engine == 'vlm', delegates 100% to GPU-accelerated Qwen2-VL.
+        Otherwise uses RapidOCR / EasyOCR with VLM smart fallback.
         """
         if img_bgr is None or img_bgr.size == 0:
             return []
 
         h, w = img_bgr.shape[:2]
+
+        if self.primary_engine == "vlm":
+            if self.vlm is None:
+                from .stage5_vlm import WineVLMDecoder
+                self.vlm = WineVLMDecoder.get_instance()
+            res = self.vlm.read_label(img_bgr)
+            raw_text = res.get("text", "").strip()
+            if not raw_text:
+                return []
+            lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
+            text_blocks = []
+            for idx, line in enumerate(lines):
+                y_start = int(idx * h / max(len(lines), 1))
+                y_end = int((idx + 1) * h / max(len(lines), 1))
+                text_blocks.append({
+                    "text": line,
+                    "confidence": 0.99,
+                    "bbox": [[0, y_start], [w, y_start], [w, y_end], [0, y_end]],
+                    "rect": {"x": 0, "y": y_start, "w": w, "h": y_end - y_start},
+                    "source": "vlm_qwen2_vl",
+                    "is_stopword": False
+                })
+            return text_blocks
         
         # 1. Super-Resolution Scaling & CLAHE Contrast Boosting + Unsharp Mask
         scale = 1.5 if max(h, w) < 1200 else 1.0
@@ -484,12 +512,38 @@ class Stage5OCRDecoder:
             full_text = full_text_corr
             all_corrections.extend(global_fixes)
 
+        num_words = sum(len(b["text"].split()) for b in text_blocks if not b.get("is_stopword"))
+
+        # Smart VLM Fallback: If classical OCR failed or found <= 1 word on a valid label
+        if self.enable_vlm_fallback and num_words <= 1:
+            try:
+                if self.vlm is None:
+                    from .stage5_vlm import WineVLMDecoder
+                    self.vlm = WineVLMDecoder.get_instance()
+                vlm_res = self.vlm.read_label(dewarped_bgr)
+                vlm_text = vlm_res.get("text", "").strip()
+                if vlm_text and len(vlm_text.split()) > num_words:
+                    full_text = vlm_text.replace("\n", " ")
+                    h_dw, w_dw = dewarped_bgr.shape[:2]
+                    text_blocks.append({
+                        "text": full_text,
+                        "confidence": 0.99,
+                        "bbox": [[0, 0], [w_dw, 0], [w_dw, h_dw], [0, h_dw]],
+                        "rect": {"x": 0, "y": 0, "w": w_dw, "h": h_dw},
+                        "is_stopword": False,
+                        "source": "vlm_qwen2_vl"
+                    })
+                    num_words = len(full_text.split())
+                    print(f"[Stage5] VLM Fallback succeeded: '{full_text}' ({vlm_res.get('latency_ms')} ms)")
+            except Exception as e:
+                print(f"[Stage5] VLM Fallback notice: {e}")
+
         return {
             "text_blocks": text_blocks,
             "codes": codes,
             "full_text": full_text,
             "annotated_bgr": annotated_bgr,
-            "num_words": sum(len(b["text"].split()) for b in text_blocks if not b.get("is_stopword")),
+            "num_words": num_words,
             "lexicon_corrections": all_corrections
         }
 

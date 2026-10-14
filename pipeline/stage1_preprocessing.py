@@ -20,15 +20,18 @@ import torch
 from .sam_refiner import SAMRefiner
 from .vectorizer import Vectorizer, VectorMask, LabelShape
 
-def _get_model_path(abs_path: str, relative_fallback: str) -> Path:
-    p = Path(abs_path)
+def _get_model_path(relative_name: str, fallback_abs: str = "") -> Path:
+    base_models = Path(__file__).resolve().parent.parent / "models"
+    p = base_models / relative_name
     if p.exists():
         return p
-    return Path(__file__).resolve().parent.parent / "models" / relative_fallback
+    if fallback_abs and Path(fallback_abs).exists():
+        return Path(fallback_abs)
+    return p
 
-TRAINED_WEIGHTS = _get_model_path(r"d:\VINA\models\best_v2_100bottles.pt", r"best_v2_100bottles.pt")
-WORLD_WEIGHTS = _get_model_path(r"D:\models\yolov8s-worldv2.pt", r"yolov8s-worldv2.pt")
-GENERIC_WEIGHTS = _get_model_path(r"D:\VINA\yolov8n-seg.pt", r"yolov8n-seg.pt")
+TRAINED_WEIGHTS = _get_model_path("best_v2_100bottles.pt", r"d:\VINA\models\best_v2_100bottles.pt")
+WORLD_WEIGHTS = _get_model_path("yolov8s-worldv2.pt", r"D:\models\yolov8s-worldv2.pt")
+GENERIC_WEIGHTS = _get_model_path("yolov8n-seg.pt", r"D:\VINA\yolov8n-seg.pt")
 
 class Stage1Preprocessor:
     def __init__(self, use_gpu: bool = True):
@@ -88,7 +91,7 @@ class Stage1Preprocessor:
         # 1. Run YOLO detection
         if self.yolo_model is not None:
             try:
-                results = self.yolo_model.predict(img_bgr, verbose=False, device=self.device, conf=0.25)
+                results = self.yolo_model.predict(img_bgr, verbose=False, device=self.device, conf=0.12)
                 for r in results:
                     boxes = r.boxes.xyxy.cpu().numpy() if r.boxes is not None else []
                     confs = r.boxes.conf.cpu().numpy() if r.boxes is not None else []
@@ -127,16 +130,31 @@ class Stage1Preprocessor:
                             label_candidates.append(det_entry)
 
                     # Reclassify/promote false labels that are actually bottle bodies:
-                    # Если объект имеет высоту > 70% кадра или площадь > 40% кадра и уходит под верхний край (горлышко),
-                    # это физически тело бутылки, а не наклейка!
+                    # Кандидат является телом бутылки (а не наклейкой), только если:
+                    # 1) Он упирается в самый верх кадра (горлышко/пробка, by1 <= 0.03 * h) и занимает почти всю высоту (bh >= 0.75 * h), ИЛИ
+                    # 2) Он существенно больше и включает в себя другого кандидата-наклейку
                     reclassified_bottles = []
                     true_label_candidates = []
-                    for cand in label_candidates:
+                    for i_c, cand in enumerate(label_candidates):
                         bx1, by1, bx2, by2 = cand["box"]
                         bw_box, bh_box = cand["bw"], cand["bh"]
                         area = cand["area"]
-                        is_likely_bottle = (bh_box >= 0.70 * h or area >= 0.45 * (w * h)) and (by1 <= 0.10 * h)
-                        if is_likely_bottle:
+                        
+                        encloses_smaller_label = False
+                        for j_c, other in enumerate(label_candidates):
+                            if i_c == j_c:
+                                continue
+                            ox1, oy1, ox2, oy2 = other["box"]
+                            ix1, iy1 = max(bx1, ox1), max(by1, oy1)
+                            ix2, iy2 = min(bx2, ox2), min(by2, oy2)
+                            if ix2 > ix1 and iy2 > iy1:
+                                inter_area = (ix2 - ix1) * (iy2 - iy1)
+                                if inter_area >= 0.60 * other["area"] and area >= 1.5 * other["area"]:
+                                    encloses_smaller_label = True
+                                    break
+
+                        # Объект реклассифицируется в бутылку ТОЛЬКО если внутри него физически найдена меньшая этикетка
+                        if encloses_smaller_label:
                             cand["class_id"] = 1
                             cand["class_name"] = "bottle"
                             reclassified_bottles.append(cand)
@@ -164,6 +182,15 @@ class Stage1Preprocessor:
                         valid_bottles.sort(key=lambda item: item["bottle_score"])
                         selected_bottle = valid_bottles[0]
                         dominant_bottle_bbox = selected_bottle["box"]
+
+                        # Защита от выбора бутылки на периферии кадра:
+                        # Если выбранная бутылка смещена на край (|cx - w/2| > 0.25 * w),
+                        # но среди наклеек есть уверенный кандидат прямо в центре видоискателя (|cx - w/2| <= 0.18 * w),
+                        # сбрасываем selected_bottle, чтобы периферийная бутылка не выкинула центральный объект:
+                        center_pt = np.array([w / 2.0, h / 2.0])
+                        center_labels = [l for l in label_candidates if abs(l["cx"] - center_pt[0]) <= 0.18 * w and l["confidence"] >= 0.40]
+                        if center_labels and abs(selected_bottle["cx"] - center_pt[0]) > 0.25 * w:
+                            selected_bottle = None
 
                     # 1.2 Фильтруем наклейки по принадлежности к выбранной бутылке
                     parsed_candidates = []
@@ -200,7 +227,9 @@ class Stage1Preprocessor:
                             else:
                                 containment = 0.0
 
-                            if containment < 0.55:
+                            # Жестко отсекаем по containment ТОЛЬКО периферийные этикетки (далеко от центра)
+                            dist_center_ratio = abs(cand["cx"] - w / 2.0) / (w / 2.0)
+                            if containment < 0.55 and dist_center_ratio > 0.25:
                                 continue
 
                         m_full = None
@@ -294,11 +323,12 @@ class Stage1Preprocessor:
                             bx1, by1, bx2, by2 = c["box"]
                             cx_box = (bx1 + bx2) / 2.0
                             dist_ratio = abs(cx_box - w / 2.0) / (w / 2.0)
-                            centrality_weight = max(0.2, 1.0 - 0.5 * dist_ratio)
+                            centrality_weight = max(0.05, (1.0 - dist_ratio) ** 2.0)
                             conf_weight = (c["conf"] / max(max_conf, 1e-4)) ** 1.5
+                            containment_bonus = 1.0 if c.get("containment", 1.0) >= 0.55 else 0.70
                             
-                            # Главной наклейкой (primary) считаем наибольшую этикетку на теле
-                            c["score"] = (c["area"] ** 0.6) * conf_weight * centrality_weight * c["containment"]
+                            # Главной наклейкой (primary) считаем центральную и значимую наклейку
+                            c["score"] = (c["area"] ** 0.6) * conf_weight * centrality_weight * containment_bonus
 
                         # Сортируем: на 0 месте самая большая/значимая наклейка
                         valid_candidates.sort(key=lambda item: item["score"], reverse=True)
@@ -306,16 +336,21 @@ class Stage1Preprocessor:
                         dominant_label_bbox = winner["box"]
                         yolo_label_mask = winner["mask"]
 
-                        # Сохраняем все наклейки центральной бутылки для OCR и выпрямления
+                        # Сохраняем ТОЛЬКО наклейки центральной бутылки (вертикально соосные с победителем)
+                        winner_cx = (winner["box"][0] + winner["box"][2]) / 2.0
+                        winner_bw = max(1, winner["box"][2] - winner["box"][0])
                         bottle_labels_list = []
                         for c in valid_candidates:
-                            bottle_labels_list.append({
-                                "box": c["box"],
-                                "conf": c["conf"],
-                                "area": c["area"],
-                                "mask": c["mask"],
-                                "is_primary": (c is winner)
-                            })
+                            c_cx = (c["box"][0] + c["box"][2]) / 2.0
+                            # Наклейка относится к той же бутылке, если их центры по X согласованы (кольеретка над/под главной)
+                            if (c is winner) or (abs(c_cx - winner_cx) <= 0.35 * winner_bw):
+                                bottle_labels_list.append({
+                                    "box": c["box"],
+                                    "conf": c["conf"],
+                                    "area": c["area"],
+                                    "mask": c["mask"],
+                                    "is_primary": (c is winner)
+                                })
 
             except Exception as e:
                 print(f"[Stage1] YOLO detection error: {e}")

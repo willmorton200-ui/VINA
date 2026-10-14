@@ -107,7 +107,7 @@ async def get_index():
 
             let cases = [];
             let catalog = [];
-            let currentFolder = "D:\\Eval";
+            let currentFolder = localStorage.getItem("vina_eval_folder") || "D:\\VINA\\owner_eval\\2";
             
             function downloadMapping() {
                 window.open(`/api/download?folder=${encodeURIComponent(currentFolder)}`, '_blank');
@@ -115,11 +115,17 @@ async def get_index():
             
             function loadFolder() {
                 currentFolder = document.getElementById("folder-input").value;
+                localStorage.setItem("vina_eval_folder", currentFolder);
                 document.getElementById("editor-title").innerText = `Редактор: ${currentFolder}`;
                 loadCases();
             }
             
             async function loadData() {
+                const saved = localStorage.getItem("vina_eval_folder");
+                if (saved) {
+                    document.getElementById("folder-input").value = saved;
+                    currentFolder = saved;
+                }
                 const catalogRes = await fetch('/api/catalog');
                 catalog = await catalogRes.json();
                 loadFolder();
@@ -319,14 +325,16 @@ async def update_case(request: Request):
     data = await request.json()
     q_id = data.get("query_id")
     expected_slug = data.get("expected_slug")
-    folder = data.get("folder")
+    folder = data.get("folder", "")
     
     mapping_file = os.path.join(folder, "mapping.json")
-    
+    if not os.path.exists(mapping_file):
+        return JSONResponse(content={"error": f"Файл не найден: {mapping_file}"}, status_code=404)
+        
     with open(mapping_file, 'r', encoding='utf-8') as f:
         mapping = json.load(f)
         
-    for c in mapping["cases"]:
+    for c in mapping.get("cases", []):
         if c["query_id"] == q_id:
             c["expected_slug"] = expected_slug
             break
@@ -334,20 +342,53 @@ async def update_case(request: Request):
     with open(mapping_file, 'w', encoding='utf-8') as f:
         json.dump(mapping, f, indent=2, ensure_ascii=False)
         
+    # Автоматическая зеркальная синхронизация между D:\VINA и D:\VINA2
+    alt_folder = folder.replace("D:\\VINA2", "D:\\VINA") if "D:\\VINA2" in folder else folder.replace("D:\\VINA", "D:\\VINA2")
+    alt_mapping = os.path.join(alt_folder, "mapping.json")
+    if os.path.exists(alt_mapping) and os.path.normpath(alt_mapping) != os.path.normpath(mapping_file):
+        try:
+            with open(alt_mapping, 'r', encoding='utf-8') as f:
+                alt_data = json.load(f)
+            for c in alt_data.get("cases", []):
+                if c["query_id"] == q_id:
+                    c["expected_slug"] = expected_slug
+                    break
+            with open(alt_mapping, 'w', encoding='utf-8') as f:
+                json.dump(alt_data, f, indent=2, ensure_ascii=False)
+        except Exception as e_alt:
+            print(f"[eval_editor] Ошибка зеркальной записи в {alt_mapping}: {e_alt}")
+            
     return {"status": "ok"}
 
 @app.delete("/api/delete")
 async def delete_case(query_id: str, folder: str):
     mapping_file = os.path.join(folder, "mapping.json")
+    if not os.path.exists(mapping_file):
+        return JSONResponse(content={"error": f"Файл не найден: {mapping_file}"}, status_code=404)
+
     with open(mapping_file, 'r', encoding='utf-8') as f:
         mapping = json.load(f)
         
-    mapping["cases"] = [c for c in mapping["cases"] if c["query_id"] != query_id]
+    mapping["cases"] = [c for c in mapping.get("cases", []) if c["query_id"] != query_id]
     mapping["positive_count"] = len(mapping["cases"])
             
     with open(mapping_file, 'w', encoding='utf-8') as f:
         json.dump(mapping, f, indent=2, ensure_ascii=False)
         
+    # Зеркальное удаление в альтернативной папке
+    alt_folder = folder.replace("D:\\VINA2", "D:\\VINA") if "D:\\VINA2" in folder else folder.replace("D:\\VINA", "D:\\VINA2")
+    alt_mapping = os.path.join(alt_folder, "mapping.json")
+    if os.path.exists(alt_mapping) and os.path.normpath(alt_mapping) != os.path.normpath(mapping_file):
+        try:
+            with open(alt_mapping, 'r', encoding='utf-8') as f:
+                alt_data = json.load(f)
+            alt_data["cases"] = [c for c in alt_data.get("cases", []) if c["query_id"] != query_id]
+            alt_data["positive_count"] = len(alt_data["cases"])
+            with open(alt_mapping, 'w', encoding='utf-8') as f:
+                json.dump(alt_data, f, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
+            
     return {"status": "ok"}
 
 @app.get("/api/download")

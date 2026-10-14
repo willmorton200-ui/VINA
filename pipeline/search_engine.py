@@ -15,11 +15,7 @@ class WineSearchEngine:
         """
         if index_path is None:
             from pathlib import Path
-            abs_p = Path(r"D:\VINA\models\siglip2_index.faiss")
-            if abs_p.exists():
-                index_path = str(abs_p)
-            else:
-                index_path = str(Path(__file__).resolve().parent.parent / "models" / "siglip2_index.faiss")
+            index_path = str(Path(__file__).resolve().parent.parent / "models" / "siglip2_index.faiss")
         self.catalog = catalog
         self.use_gpu = use_gpu and torch.cuda.is_available()
         self.device = "cuda:0" if self.use_gpu else "cpu"
