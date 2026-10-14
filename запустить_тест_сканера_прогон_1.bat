@@ -8,7 +8,7 @@ echo           VINA Scanner: Тест заказчика (Прогон 1 - 27 ф
 echo ======================================================================
 echo.
 
-python test_vina_scanner.py --run 1 %*
+python test_vina_scanner.py --run 1 --mode http %*
 
 echo.
 pause

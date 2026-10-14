@@ -25,14 +25,15 @@ from .wine_lexicon_corrector import WineVocabularyCorrector
 from .metrics import compute_image_metrics
 
 class CylindricalDewarpEngine:
-    def __init__(self, use_gpu: bool = True, languages=['ru', 'en']):
-        print("[DewarpEngine] Initializing Production Dewarping Engine (Single Dominant Label + Dual Verification)...")
+    def __init__(self, use_gpu: bool = True, languages=['ru', 'en'], ocr_engine: str = "vlm"):
+        print(f"[DewarpEngine] Initializing Production Dewarping Engine (OCR: {ocr_engine.upper()})...")
         self.use_gpu = use_gpu and torch.cuda.is_available()
         self.device = "cuda:0" if self.use_gpu else "cpu"
+        self.ocr_engine = ocr_engine
         
         self.stage1 = Stage1Preprocessor(use_gpu=use_gpu)
         self.vectorizer = MaskVectorizer()
-        self.stage5 = Stage5OCRDecoder(languages=languages, use_gpu=use_gpu)
+        self.stage5 = Stage5OCRDecoder(languages=languages, use_gpu=use_gpu, primary_engine=ocr_engine)
         self.lexicon = WineVocabularyCorrector()
         print("[DewarpEngine] Production Engine ready.")
 
@@ -52,13 +53,23 @@ class CylindricalDewarpEngine:
         """Vectorizes and dewarps a single label using regularized 3D Coon's patch."""
         h_c, w_c = img_crop.shape[:2]
         
-        # 1. OCR on Raw Crop (before transformation)
-        ocr_raw = self.stage5.process(img_crop)
-        
-        # 2. Strict Corners and Guides directly in natural crop coordinate space
-        vec = self.vectorizer.extract_vector_mask(mask, ocr_data=ocr_raw, image=img_crop)
+        # 1. OCR on Raw Crop (only needed in classic dual-verification mode; skipped in VLM mode)
+        if self.ocr_engine == "vlm":
+            ocr_raw = {"text_blocks": [], "full_text": "", "annotated_bgr": img_crop, "codes": []}
+            t_ocr_raw_ms = 0.0
+            t_s2_0 = time.perf_counter()
+            vec = self.vectorizer.extract_vector_mask(mask, ocr_data=None, image=img_crop)
+            stage2_ms = (time.perf_counter() - t_s2_0) * 1000.0
+        else:
+            t_ocr_raw_0 = time.perf_counter()
+            ocr_raw = self.stage5.process(img_crop)
+            t_ocr_raw_ms = (time.perf_counter() - t_ocr_raw_0) * 1000.0
+            t_s2_0 = time.perf_counter()
+            vec = self.vectorizer.extract_vector_mask(mask, ocr_data=ocr_raw, image=img_crop)
+            stage2_ms = (time.perf_counter() - t_s2_0) * 1000.0
         
         # 3. Compute bisector angle for telemetry/diagnostics
+        t_s3_0 = time.perf_counter()
         v_L = vec.P_BL - vec.P_TL
         v_R = vec.P_BR - vec.P_TR
         u_L = v_L / max(np.hypot(v_L[0], v_L[1]), 1e-4)
@@ -256,14 +267,20 @@ class CylindricalDewarpEngine:
             u_grid[r, :] = np.clip(curve_interp[:, 0], 0, w_c - 1)
             v_grid[r, :] = np.clip(curve_interp[:, 1], 0, h_c - 1)
             
+        # Stage 3: Regularized Mesh generation
+        t_s3_0 = time.perf_counter()
         arc_T = np.sum(np.hypot(np.diff(u_grid[0, :]), np.diff(v_grid[0, :])))
         arc_B = np.sum(np.hypot(np.diff(u_grid[-1, :]), np.diff(v_grid[-1, :])))
         dst_w = max(int(round(max(arc_T, arc_B))), 100)
         dst_h = max(int(round(target_y_max - target_y_min)), 100)
-        
         map_x = cv2.resize(u_grid, (dst_w, dst_h), interpolation=cv2.INTER_CUBIC)
         map_y = cv2.resize(v_grid, (dst_w, dst_h), interpolation=cv2.INTER_CUBIC)
+        stage3_ms = (time.perf_counter() - t_s3_0) * 1000.0
+
+        # Stage 4: Surface Remapping / Dewarping
+        t_s4_0 = time.perf_counter()
         dewarped = cv2.remap(rot_img, map_x.astype(np.float32), map_y.astype(np.float32), interpolation=cv2.INTER_LANCZOS4)
+        stage4_ms = (time.perf_counter() - t_s4_0) * 1000.0
         
         # Diagnostic visual features
         vis_features = rot_img.copy()
@@ -282,7 +299,6 @@ class CylindricalDewarpEngine:
                 for pt in pts:
                     cv2.circle(vis_features, (int(pt[0]), int(pt[1])), 2, color, -1, cv2.LINE_AA)
 
-        
         # Отрисовка всех валидных штрихов
         for g in guides:
             color = (0, 0, 255) if g.get("is_text") else (0, 255, 0)
@@ -305,8 +321,10 @@ class CylindricalDewarpEngine:
             pts_c = np.column_stack((u_grid[:, c], v_grid[:, c])).astype(np.int32)
             cv2.polylines(vis_mesh, [pts_c], False, (0, 180, 255), 1, cv2.LINE_AA)
             
-        # 5. OCR on Dewarped Scan
+        # 5. OCR on Dewarped Scan (Stage 5)
+        t_ocr_dew_0 = time.perf_counter()
         ocr_dew = self.stage5.process(dewarped)
+        t_ocr_dew_ms = (time.perf_counter() - t_ocr_dew_0) * 1000.0
         
         return {
             "dewarped": dewarped,
@@ -317,7 +335,14 @@ class CylindricalDewarpEngine:
             "vector_mask": vec,
             "ocr_raw": ocr_raw,
             "ocr_dew": ocr_dew,
-            "bisector_angle": theta
+            "bisector_angle": theta,
+            "tier_timings": {
+                "stage2_ms": round(stage2_ms, 1),
+                "stage3_ms": round(stage3_ms, 1),
+                "stage4_ms": round(stage4_ms, 1),
+                "ocr_raw_ms": round(t_ocr_raw_ms, 1),
+                "ocr_dew_ms": round(t_ocr_dew_ms, 1)
+            }
         }
 
     def process_image(self, 
@@ -333,7 +358,7 @@ class CylindricalDewarpEngine:
         
         # 1. Localization & Cropping of Single Largest Label Mask
         t0 = time.perf_counter()
-        cropped_bgr, cropped_mask, _ = self.stage1.segment_bottle_and_label(img_bgr)
+        cropped_bgr, cropped_mask, bbox_info = self.stage1.segment_bottle_and_label(img_bgr)
         cropped_mask = self.stage1._keep_largest_component(cropped_mask)
         timings["stage1_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
 
@@ -376,51 +401,149 @@ class CylindricalDewarpEngine:
         all_corrections = dew_corrs if dew_words >= raw_words else raw_corrs
         all_codes = res["ocr_dew"].get("codes", [])
         
-        timings["stage2_ms"] = 3.2
-        timings["stage3_ms"] = 21.0
-        timings["stage4_ms"] = 38.0
-        timings["stage5_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
+        tier_t = res.get("tier_timings", {})
+        timings["stage2_ms"] = tier_t.get("stage2_ms", 0.0)
+        timings["stage3_ms"] = tier_t.get("stage3_ms", 0.0)
+        timings["stage4_ms"] = tier_t.get("stage4_ms", 0.0)
+        timings["stage5_ms"] = round(tier_t.get("ocr_dew_ms", 0.0) + tier_t.get("ocr_raw_ms", 0.0), 1)
         
         vec = res["vector_mask"]
         theta_bisector = res["bisector_angle"]
 
-        # Dual Verification Decision
-        gain = dew_words - raw_words
-        if dew_words >= raw_words:
+        # Decision Logic: VLM mode directly takes the high-precision dewarped scan; classic uses word gain
+        if self.ocr_engine == "vlm":
+            gain = dew_words
             selected_source = "dewarped"
             selected_text = dew_text
             selected_tokens = dew_tokens
             selected_annotated = annotated_dew_display
-            decision_status = f"+{gain} сл (прирост - выбран выпрямленный скан)" if gain > 0 else "0 (точное сохранение - выбран выпрямленный скан)"
-        else:
-            selected_source = "raw"
-            selected_text = raw_text
-            selected_tokens = raw_tokens
-            selected_annotated = annotated_raw_display
-            decision_status = f"{gain} сл (неудачная трансформация - выбран исходный захват)"
+            decision_status = "VLM (Qwen2-VL 100% GPU прямой скан)"
 
-        # --- MICROSCOPE: Second-pass OCR on bottom third of crop (upscaled x2) ---
-        # Catches small text (grape varieties, wine color) that main OCR misses
+            # Если на выпрямленном скане не распознались слова (узкая/деформированная этикетка),
+            # опрашиваем Qwen2-VL по исходному кадру бутылки
+            if dew_words <= 1:
+                try:
+                    from .stage5_vlm import WineVLMDecoder
+                    vlm_inst = WineVLMDecoder.get_instance()
+                    vlm_raw = vlm_inst.read_label(img_bgr)
+                    raw_vlm_text = vlm_raw.get("text", "").strip().replace("\n", " ")
+                    raw_vlm_cor, _ = self.lexicon.correct_text(raw_vlm_text)
+                    if len(raw_vlm_cor.split()) > dew_words:
+                        selected_text = raw_vlm_cor
+                        selected_source = "raw_full"
+                        decision_status = f"VLM (Qwen2-VL полный кадр: {len(raw_vlm_cor.split())} сл)"
+                except Exception as e_vlm:
+                    pass
+        else:
+            gain = dew_words - raw_words
+            if dew_words >= raw_words:
+                selected_source = "dewarped"
+                selected_text = dew_text
+                selected_tokens = dew_tokens
+                selected_annotated = annotated_dew_display
+                decision_status = f"+{gain} сл (прирост - выбран выпрямленный скан)" if gain > 0 else "0 (точное сохранение - выбран выпрямленный скан)"
+            else:
+                selected_source = "raw"
+                selected_text = raw_text
+                selected_tokens = raw_tokens
+                selected_annotated = annotated_raw_display
+                decision_status = f"{gain} сл (неудачная трансформация - выбран исходный захват)"
+
+        # --- MICROSCOPE: Second-pass OCR (only needed for classic OCR to catch small text) ---
+        if self.ocr_engine != "vlm":
+            try:
+                micro_source = dewarped_display if selected_source == "dewarped" else crop_display
+                mh, mw = micro_source.shape[:2]
+                bottom_crop = micro_source[int(mh * 0.65):, :]
+                if bottom_crop.size > 0:
+                    bh, bw = bottom_crop.shape[:2]
+                    if bh > 10 and bw > 10:
+                        bottom_2x = cv2.resize(bottom_crop, (bw * 2, bh * 2), interpolation=cv2.INTER_CUBIC)
+                        t_micro_0 = time.perf_counter()
+                        micro_ocr = self.stage5.process(bottom_2x)
+                        t_micro_ms = (time.perf_counter() - t_micro_0) * 1000.0
+                        timings["stage5_ms"] = round(timings.get("stage5_ms", 0.0) + t_micro_ms, 1)
+                        micro_text_raw = micro_ocr.get("full_text", "")
+                        if micro_text_raw.strip():
+                            micro_text, _ = self.lexicon.correct_text(micro_text_raw)
+                            # Only append genuinely new words not already in selected_text
+                            existing_words = set(selected_text.upper().split())
+                            new_words = [w for w in micro_text.split() if w.upper() not in existing_words and len(w) > 1]
+                            if new_words:
+                                selected_text = selected_text + " " + " ".join(new_words)
+                                print(f"[Microscope] Found new text in bottom zone: '{' '.join(new_words)}'")
+            except Exception as e:
+                print(f"[Microscope] Error: {e}")
+
+        # --- MULTI-LABEL VERTICAL STITCHING & OCR: Process and dewarp additional labels ---
         try:
-            micro_source = dewarped_display if selected_source == "dewarped" else crop_display
-            mh, mw = micro_source.shape[:2]
-            bottom_crop = micro_source[int(mh * 0.65):, :]
-            if bottom_crop.size > 0:
-                bh, bw = bottom_crop.shape[:2]
-                if bh > 10 and bw > 10:
-                    bottom_2x = cv2.resize(bottom_crop, (bw * 2, bh * 2), interpolation=cv2.INTER_CUBIC)
-                    micro_ocr = self.stage5.process(bottom_2x)
-                    micro_text_raw = micro_ocr.get("full_text", "")
-                    if micro_text_raw.strip():
-                        micro_text, _ = self.lexicon.correct_text(micro_text_raw)
-                        # Only append genuinely new words not already in selected_text
-                        existing_words = set(selected_text.upper().split())
-                        new_words = [w for w in micro_text.split() if w.upper() not in existing_words and len(w) > 1]
-                        if new_words:
-                            selected_text = selected_text + " " + " ".join(new_words)
-                            print(f"[Microscope] Found new text in bottom zone: '{' '.join(new_words)}'")
+            bottle_labels = bbox_info.get("bottle_labels", [])
+            # Сортируем все наклейки строго по вертикали (сверху вниз по Y-координате)
+            sorted_labels = sorted(bottle_labels, key=lambda l: l["box"][1])
+
+            if len(sorted_labels) > 1:
+                dewarped_segments = []
+                # Находим соответствие или выпрямляем каждую наклейку
+                for l_idx, lbl in enumerate(sorted_labels):
+                    sbx1, sby1, sbx2, sby2 = lbl["box"]
+                    # Если это первичная и уже выпрямлена - используем её результат
+                    if lbl.get("is_primary", False) and dewarped_display is not None and dewarped_display.size > 0:
+                        dewarped_segments.append(dewarped_display)
+                    else:
+                        spad = 12
+                        sx0, sy0 = max(0, sbx1 - spad), max(0, sby1 - spad)
+                        sx1, sy1 = min(w_orig, sbx2 + spad), min(h_orig, sby2 + spad)
+                        sec_crop_bgr = img_bgr[sy0:sy1, sx0:sx1]
+
+                        sec_mask = lbl.get("mask")
+                        if sec_mask is not None:
+                            sec_crop_mask = sec_mask[sy0:sy1, sx0:sx1]
+                        else:
+                            sec_crop_mask = np.ones((sy1 - sy0, sx1 - sx0), dtype=np.uint8) * 255
+
+                        try:
+                            sec_res = self._dewarp_single_tier(sec_crop_bgr, sec_crop_mask)
+                            sec_t = sec_res.get("tier_timings", {})
+                            timings["stage2_ms"] = round(timings.get("stage2_ms", 0.0) + sec_t.get("stage2_ms", 0.0), 1)
+                            timings["stage3_ms"] = round(timings.get("stage3_ms", 0.0) + sec_t.get("stage3_ms", 0.0), 1)
+                            timings["stage4_ms"] = round(timings.get("stage4_ms", 0.0) + sec_t.get("stage4_ms", 0.0), 1)
+                            timings["stage5_ms"] = round(timings.get("stage5_ms", 0.0) + sec_t.get("ocr_dew_ms", 0.0) + sec_t.get("ocr_raw_ms", 0.0), 1)
+                            sec_dew = sec_res.get("dewarped")
+                            if sec_dew is not None and sec_dew.size > 0:
+                                dewarped_segments.append(sec_dew)
+                                # Дополняем распознанный текст со второй этикетки
+                                sec_txt_raw = sec_res["ocr_dew"]["full_text"]
+                                if sec_txt_raw.strip():
+                                    sec_txt_cor, _ = self.lexicon.correct_text(sec_txt_raw)
+                                    existing_words = set(selected_text.upper().split())
+                                    new_sec_words = [w for w in sec_txt_cor.split() if w.upper() not in existing_words and len(w) > 1]
+                                    if new_sec_words:
+                                        selected_text = selected_text + " " + " ".join(new_sec_words)
+                        except Exception as e_sec:
+                            print(f"[MultiLabel] Dewarping segment #{l_idx+1} warning: {e_sec}")
+                            dewarped_segments.append(sec_crop_bgr)
+
+                # Если успешно получено несколько сегментов, сшиваем по вертикали
+                if len(dewarped_segments) > 1:
+                    max_w = max(seg.shape[1] for seg in dewarped_segments)
+                    aligned_segments = []
+                    for seg in dewarped_segments:
+                        sh, sw = seg.shape[:2]
+                        if sw != max_w:
+                            seg = cv2.resize(seg, (max_w, int(sh * (max_w / float(sw)))))
+                        aligned_segments.append(seg)
+
+                    # Разделитель между этикетками (20 пикселей)
+                    gap = np.zeros((20, max_w, 3), dtype=np.uint8)
+                    stacked_result = aligned_segments[0]
+                    for seg in aligned_segments[1:]:
+                        stacked_result = np.vstack([stacked_result, gap, seg])
+
+                    dewarped_display = stacked_result
+                    print(f"[MultiLabel] Successfully stitched {len(dewarped_segments)} labels vertically. New canvas shape: {dewarped_display.shape}")
+
         except Exception as e:
-            print(f"[Microscope] Error: {e}")
+            print(f"[MultiLabel] Vertical stitching error: {e}")
 
         total_ms = round((time.perf_counter() - start_total) * 1000.0, 1)
         timings["total_ms"] = total_ms

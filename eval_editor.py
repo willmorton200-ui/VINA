@@ -1,6 +1,6 @@
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import json
 import pandas as pd
@@ -8,24 +8,34 @@ import os
 
 app = FastAPI()
 
-OWNER_EVAL_DIR = "D:/VINA/owner_eval"
-CATALOG_IMAGES_DIR = "D:/VINA/wines_images_clean/wines_images"
-CATALOG_CSV = "D:/VINA/wines_integrated_clean.csv"
+CATALOG_IMAGES_DIR = "D:/VINA/media"
+CATALOG_CSV = "D:/VINA/data/products_catalog.csv"
 
-app.mount("/owner_eval", StaticFiles(directory=OWNER_EVAL_DIR), name="owner_eval")
 if os.path.exists(CATALOG_IMAGES_DIR):
     app.mount("/catalog_images", StaticFiles(directory=CATALOG_IMAGES_DIR), name="catalog_images")
 
-catalog_df = pd.read_csv(CATALOG_CSV)
+try:
+    catalog_df = pd.read_csv(CATALOG_CSV, encoding='utf-8')
+except UnicodeDecodeError:
+    try:
+        catalog_df = pd.read_csv(CATALOG_CSV, encoding='utf-16')
+    except UnicodeDecodeError:
+        catalog_df = pd.read_csv(CATALOG_CSV, encoding='windows-1251')
+
 # Handle potential NaN values
 catalog_df = catalog_df.fillna("")
 
 CATALOG_LIST = []
 for _, row in catalog_df.iterrows():
+    # Поддерживаем и старый формат, и новый
+    slug = row.get("slug", row.get("Slug", ""))
+    name = row.get("title", row.get("Название вина", ""))
+    image = row.get("source_image_path", row.get("Файл в wines_images", ""))
+    
     CATALOG_LIST.append({
-        "slug": row.get("Slug", ""),
-        "name": row.get("Название вина", ""),
-        "image": row.get("Файл в wines_images", "")
+        "slug": slug,
+        "name": name,
+        "image": image
     })
 
 @app.get("/")
@@ -72,17 +82,14 @@ async def get_index():
         </div>
         
         <div class="container">
-            <h1 id="editor-title">Редактор owner_eval/119</h1>
-            <div style="margin-bottom: 20px;">
-                <label style="font-size: 1.2em; margin-right: 10px;">Выбор датасета:</label>
-                <select id="dataset-select" onchange="changeDataset()" style="padding: 8px; font-size: 1.1em; background: #222; color: #fff; border: 1px solid #555; border-radius: 4px;">
-                    <option value="119">119</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                </select>
+            <h1 id="editor-title">Редактор тестов</h1>
+            <div style="margin-bottom: 20px; display: flex; gap: 10px; align-items: center;">
+                <label style="font-size: 1.2em;">Папка теста:</label>
+                <input type="text" id="folder-input" value="D:\\Eval" style="padding: 8px; font-size: 1.1em; background: #222; color: #fff; border: 1px solid #555; border-radius: 4px; width: 400px;" placeholder="D:\\Путь\\К\\Папке">
+                <button onclick="loadFolder()" style="background: #4CAF50; margin: 0;">Открыть / Сформировать</button>
+                <button onclick="downloadMapping()" style="background: #2196F3; margin: 0;">Скачать mapping.json</button>
             </div>
-            <div id="cases-container">Загрузка...</div>
+            <div id="cases-container">Введите путь и нажмите "Открыть"...</div>
         </div>
         
         <script>
@@ -100,30 +107,55 @@ async def get_index():
 
             let cases = [];
             let catalog = [];
-            let currentDataset = "119";
+            let currentFolder = localStorage.getItem("vina_eval_folder") || "D:\\VINA\\owner_eval\\2";
             
-            function changeDataset() {
-                currentDataset = document.getElementById("dataset-select").value;
-                document.getElementById("editor-title").innerText = `Редактор owner_eval/${currentDataset}`;
+            function downloadMapping() {
+                window.open(`/api/download?folder=${encodeURIComponent(currentFolder)}`, '_blank');
+            }
+            
+            function loadFolder() {
+                currentFolder = document.getElementById("folder-input").value;
+                localStorage.setItem("vina_eval_folder", currentFolder);
+                document.getElementById("editor-title").innerText = `Редактор: ${currentFolder}`;
                 loadCases();
             }
             
             async function loadData() {
+                const saved = localStorage.getItem("vina_eval_folder");
+                if (saved) {
+                    document.getElementById("folder-input").value = saved;
+                    currentFolder = saved;
+                }
                 const catalogRes = await fetch('/api/catalog');
                 catalog = await catalogRes.json();
-                
-                await loadCases();
+                loadFolder();
             }
             
             async function loadCases() {
-                const casesRes = await fetch(`/api/cases?dataset=${currentDataset}`);
-                cases = await casesRes.json();
-                renderCases();
+                const container = document.getElementById('cases-container');
+                container.innerHTML = 'Загрузка...';
+                try {
+                    const casesRes = await fetch(`/api/cases?folder=${encodeURIComponent(currentFolder)}`);
+                    const data = await casesRes.json();
+                    if (data.error) {
+                        container.innerHTML = `<span style="color: #e74c3c;">Ошибка: ${data.error}</span>`;
+                        return;
+                    }
+                    cases = data;
+                    renderCases();
+                } catch (e) {
+                    container.innerHTML = `<span style="color: #e74c3c;">Ошибка соединения</span>`;
+                }
             }
             
             function renderCases() {
                 const container = document.getElementById('cases-container');
                 container.innerHTML = '';
+                
+                if (cases.length === 0) {
+                    container.innerHTML = 'В этом тесте нет данных (или папка пуста).';
+                    return;
+                }
                 
                 cases.forEach((c, index) => {
                     const card = document.createElement('div');
@@ -135,7 +167,7 @@ async def get_index():
                     card.innerHTML = `
                         <div class="image-col">
                             <h3>${c.query_id}</h3>
-                            <img class="zoomable" src="/owner_eval/${currentDataset}/queries/${c.image_path}" alt="Query Image" onclick="openModal(this.src)">
+                            <img class="zoomable" src="/api/eval_image?folder=${encodeURIComponent(currentFolder)}&image_path=${encodeURIComponent(c.image_path)}" alt="Query Image" onclick="openModal(this.src)">
                         </div>
                         <div class="info-col">
                             <div class="current-expected">
@@ -166,8 +198,13 @@ async def get_index():
                 const listDiv = document.getElementById(`catalog-list-${queryId}`);
                 listDiv.innerHTML = '';
                 
-                searchStr = searchStr.toLowerCase();
-                const filtered = catalog.filter(w => w.name.toLowerCase().includes(searchStr) || w.slug.toLowerCase().includes(searchStr)).slice(0, 30);
+                searchStr = searchStr.toLowerCase().trim();
+                const searchTerms = searchStr.split(/\s+/).filter(t => t.length > 0);
+                
+                const filtered = catalog.filter(w => {
+                    const searchable = (w.name + " " + w.slug).toLowerCase();
+                    return searchTerms.every(term => searchable.includes(term));
+                }).slice(0, 100);
                 
                 filtered.forEach(w => {
                     const div = document.createElement('div');
@@ -207,7 +244,7 @@ async def get_index():
                 const res = await fetch('/api/update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query_id: c.query_id, expected_slug: c.expected_slug, dataset: currentDataset })
+                    body: JSON.stringify({ query_id: c.query_id, expected_slug: c.expected_slug, folder: currentFolder })
                 });
                 if (res.ok) {
                     const msg = document.getElementById(`msg-${queryId}`);
@@ -219,7 +256,7 @@ async def get_index():
             async function deleteCase(queryId) {
                 if (!confirm("Удалить эту картинку из тестового набора?")) return;
                 
-                const res = await fetch(`/api/delete?query_id=${queryId}&dataset=${currentDataset}`, { method: 'DELETE' });
+                const res = await fetch(`/api/delete?query_id=${queryId}&folder=${encodeURIComponent(currentFolder)}`, { method: 'DELETE' });
                 if (res.ok) {
                     const card = document.getElementById(`case-${queryId}`);
                     card.style.display = 'none';
@@ -238,28 +275,66 @@ async def get_index():
 async def get_catalog():
     return JSONResponse(content=CATALOG_LIST)
 
+@app.get("/api/eval_image")
+async def get_eval_image(folder: str, image_path: str):
+    img_full_path = os.path.join(folder, "queries", image_path)
+    if os.path.exists(img_full_path):
+        return FileResponse(img_full_path)
+    # fallback to just folder if queries subfolder doesn't exist
+    img_fallback = os.path.join(folder, image_path)
+    if os.path.exists(img_fallback):
+        return FileResponse(img_fallback)
+    return JSONResponse(content={"error": "Image not found"}, status_code=404)
+
 @app.get("/api/cases")
-async def get_cases(dataset: str = "119"):
-    mapping_file = os.path.join(OWNER_EVAL_DIR, dataset, "mapping.json")
-    if not os.path.exists(mapping_file):
-        return JSONResponse(content=[])
-    with open(mapping_file, 'r', encoding='utf-8') as f:
-        mapping = json.load(f)
-    return JSONResponse(content=mapping["cases"])
+async def get_cases(folder: str):
+    if not os.path.exists(folder):
+        return JSONResponse(content={"error": "Папка не найдена"}, status_code=400)
+        
+    mapping_file = os.path.join(folder, "mapping.json")
+    
+    # If mapping.json exists, return it
+    if os.path.exists(mapping_file):
+        with open(mapping_file, 'r', encoding='utf-8') as f:
+            mapping = json.load(f)
+        return JSONResponse(content=mapping.get("cases", []))
+        
+    # Otherwise try to form it from queries.tsv
+    queries_tsv = os.path.join(folder, "queries.tsv")
+    if os.path.exists(queries_tsv):
+        df = pd.read_csv(queries_tsv, sep='\t')
+        cases = []
+        for _, row in df.iterrows():
+            cases.append({
+                "query_id": str(row['query_id']),
+                "expected_slug": "",
+                "image_path": str(row['image_path'])
+            })
+        mapping = {
+            "positive_count": len(cases),
+            "cases": cases
+        }
+        with open(mapping_file, 'w', encoding='utf-8') as f:
+            json.dump(mapping, f, indent=2, ensure_ascii=False)
+        return JSONResponse(content=cases)
+        
+    return JSONResponse(content={"error": "В папке нет ни mapping.json, ни queries.tsv"}, status_code=400)
 
 @app.post("/api/update")
 async def update_case(request: Request):
     data = await request.json()
     q_id = data.get("query_id")
     expected_slug = data.get("expected_slug")
-    dataset = data.get("dataset", "119")
+    folder = data.get("folder", "")
     
-    mapping_file = os.path.join(OWNER_EVAL_DIR, dataset, "mapping.json")
-    
+    mapping_file = os.path.join(folder, "mapping.json")
+    if not os.path.exists(mapping_file):
+        return JSONResponse(content={"error": f"Файл не найден: {mapping_file}"}, status_code=404)
+        
     with open(mapping_file, 'r', encoding='utf-8') as f:
         mapping = json.load(f)
         
-    for c in mapping["cases"]:
+    for c in mapping.get("cases", []):
         if c["query_id"] == q_id:
             c["expected_slug"] = expected_slug
             break
@@ -267,21 +342,62 @@ async def update_case(request: Request):
     with open(mapping_file, 'w', encoding='utf-8') as f:
         json.dump(mapping, f, indent=2, ensure_ascii=False)
         
+    # Автоматическая зеркальная синхронизация между D:\VINA и D:\VINA2
+    alt_folder = folder.replace("D:\\VINA2", "D:\\VINA") if "D:\\VINA2" in folder else folder.replace("D:\\VINA", "D:\\VINA2")
+    alt_mapping = os.path.join(alt_folder, "mapping.json")
+    if os.path.exists(alt_mapping) and os.path.normpath(alt_mapping) != os.path.normpath(mapping_file):
+        try:
+            with open(alt_mapping, 'r', encoding='utf-8') as f:
+                alt_data = json.load(f)
+            for c in alt_data.get("cases", []):
+                if c["query_id"] == q_id:
+                    c["expected_slug"] = expected_slug
+                    break
+            with open(alt_mapping, 'w', encoding='utf-8') as f:
+                json.dump(alt_data, f, indent=2, ensure_ascii=False)
+        except Exception as e_alt:
+            print(f"[eval_editor] Ошибка зеркальной записи в {alt_mapping}: {e_alt}")
+            
     return {"status": "ok"}
 
 @app.delete("/api/delete")
-async def delete_case(query_id: str, dataset: str = "119"):
-    mapping_file = os.path.join(OWNER_EVAL_DIR, dataset, "mapping.json")
+async def delete_case(query_id: str, folder: str):
+    mapping_file = os.path.join(folder, "mapping.json")
+    if not os.path.exists(mapping_file):
+        return JSONResponse(content={"error": f"Файл не найден: {mapping_file}"}, status_code=404)
+
     with open(mapping_file, 'r', encoding='utf-8') as f:
         mapping = json.load(f)
         
-    mapping["cases"] = [c for c in mapping["cases"] if c["query_id"] != query_id]
+    mapping["cases"] = [c for c in mapping.get("cases", []) if c["query_id"] != query_id]
     mapping["positive_count"] = len(mapping["cases"])
             
     with open(mapping_file, 'w', encoding='utf-8') as f:
         json.dump(mapping, f, indent=2, ensure_ascii=False)
         
+    # Зеркальное удаление в альтернативной папке
+    alt_folder = folder.replace("D:\\VINA2", "D:\\VINA") if "D:\\VINA2" in folder else folder.replace("D:\\VINA", "D:\\VINA2")
+    alt_mapping = os.path.join(alt_folder, "mapping.json")
+    if os.path.exists(alt_mapping) and os.path.normpath(alt_mapping) != os.path.normpath(mapping_file):
+        try:
+            with open(alt_mapping, 'r', encoding='utf-8') as f:
+                alt_data = json.load(f)
+            alt_data["cases"] = [c for c in alt_data.get("cases", []) if c["query_id"] != query_id]
+            alt_data["positive_count"] = len(alt_data["cases"])
+            with open(alt_mapping, 'w', encoding='utf-8') as f:
+                json.dump(alt_data, f, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
+            
     return {"status": "ok"}
+
+@app.get("/api/download")
+async def download_mapping(folder: str):
+    mapping_file = os.path.join(folder, "mapping.json")
+    if os.path.exists(mapping_file):
+        dataset_name = os.path.basename(os.path.normpath(folder))
+        return FileResponse(mapping_file, filename=f"mapping_{dataset_name}.json", media_type="application/json")
+    return JSONResponse(content={"error": "Not found"}, status_code=404)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8081)

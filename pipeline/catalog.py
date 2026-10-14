@@ -18,32 +18,32 @@ class WineCatalog:
 
         self.new_csv = csv_path
         if not self.new_csv:
-            abs_csv = Path(r"D:\VINA\wines_integrated_clean.csv")
-            self.new_csv = str(abs_csv) if abs_csv.exists() else str(base_dir / "wines_integrated_clean.csv")
+            csv_candidate = base_dir / "wines_integrated_clean.csv"
+            self.new_csv = str(csv_candidate) if csv_candidate.exists() else str(Path(r"D:\VINA\wines_integrated_clean.csv"))
             
         self.new_images_dir = uploads_dir
         if not self.new_images_dir:
-            abs_img = Path(r"D:\VINA\wines_images_clean\wines_images")
-            self.new_images_dir = str(abs_img) if abs_img.exists() else str(base_dir / "wines_images_clean" / "wines_images")
+            img_candidate = base_dir / "wines_images_clean" / "wines_images"
+            self.new_images_dir = str(img_candidate) if img_candidate.exists() else str(Path(r"D:\VINA\wines_images_clean\wines_images"))
 
         # Пути к старой базе (фоллбэк)
-        self.old_json = r"D:\VINA\data\products_catalog.json"
-        self.old_csv = r"D:\VINA\data\wines_integrated.csv"
-        self.old_media = r"D:\VINA\media\products"
+        self.old_json = str(base_dir / "data" / "products_catalog.json")
+        self.old_csv = str(base_dir / "data" / "wines_integrated.csv")
+        self.old_media = str(base_dir / "media" / "products")
 
         # Пути к legacy (фоллбэк №2)
-        self.legacy_csv = r"D:\VINA\TZ\Датасет\Датасет\strapi_output0709.csv"
-        self.legacy_uploads = r"D:\VINA\TZ\Датасет\Датасет\prod-svoe-vino-strapi\prod-svoe-vino\strapi\uploads"
+        self.legacy_csv = str(base_dir / "TZ" / "Датасет" / "Датасет" / "strapi_output0709.csv")
+        self.legacy_uploads = str(base_dir / "TZ" / "Датасет" / "Датасет" / "prod-svoe-vino-strapi" / "prod-svoe-vino" / "strapi" / "uploads")
 
         self.wines_by_slug = {}
         self.upload_files = {}
 
         # Определяем, какую базу использовать
-        if os.path.isfile(self.new_csv) and os.path.isdir(self.new_images_dir):
+        if os.path.isfile(self.new_csv):
             self._load_clean_catalog()
         elif os.path.isfile(self.old_json) and os.path.isdir(self.old_media):
             self._load_full_catalog()
-        else:
+        elif os.path.isfile(self.legacy_csv):
             self._index_uploads()
             self._load_legacy_catalog()
 

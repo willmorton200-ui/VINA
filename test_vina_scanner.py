@@ -22,6 +22,9 @@ import cv2
 import httpx
 
 
+CONFIDENCE_THRESHOLD = 86.0  # Порог проходимости итоговой уверенности
+
+
 def calculate_sha256(filepath: Path) -> str:
     h = hashlib.sha256()
     with open(filepath, "rb") as f:
@@ -87,7 +90,10 @@ def run_http_eval(queries, images_dir: Path, endpoint: str, output_path: Path, m
 
             latencies.append(latency_ms)
             expected = mapping.get(query_id)
-            ok = (predicted_slug and predicted_slug == expected)
+            if expected is None:
+                ok = (predicted_slug is None)
+            else:
+                ok = (predicted_slug and predicted_slug == expected)
             if ok:
                 correct += 1
                 status = "✓ OK"
@@ -117,23 +123,33 @@ def run_http_eval(queries, images_dir: Path, endpoint: str, output_path: Path, m
 
 
 def run_direct_eval(queries, images_dir: Path, output_path: Path, mapping: dict):
-    print("\n[DIRECT РЕЖИМ] Инициализация движка VINA WineSearchEngine (SigLIP2 + FAISS)...")
+    print("\n[DIRECT РЕЖИМ] Инициализация VINA Studio (SigLIP2 + DINOv2-LoRA + Dewarp OCR + Тезаурус)...")
     sys.path.insert(0, str(Path(__file__).parent))
     from pipeline.catalog import WineCatalog
     from pipeline.search_engine import WineSearchEngine
 
-    csv_file = r"D:\VINA\TZ\Датасет\Датасет\strapi_output0709.csv"
-    uploads = r"D:\VINA\TZ\Датасет\Датасет\prod-svoe-vino-strapi\prod-svoe-vino\strapi\uploads"
-
-    catalog = WineCatalog(csv_file, uploads)
+    catalog = WineCatalog()
     engine = WineSearchEngine(catalog, use_gpu=True)
+
+    ranker = None
+    dewarp = None
+    try:
+        from pipeline.dewarp_engine import CylindricalDewarpEngine
+        from pipeline.dino_engine import DinoLabelEngine
+        from pipeline.hybrid_ranker import HybridRanker
+        dewarp = CylindricalDewarpEngine(use_gpu=True)
+        dino = DinoLabelEngine(catalog, use_gpu=True, yolo_model=dewarp.stage1.yolo_model)
+        ranker = HybridRanker(engine, dino, catalog, w_siglip=0.7, w_dino=0.3, pool_k_sig=3, pool_k_dino=3, calibrate=True)
+        print("✓ Полный гибридный движок активирован (Top-3+Top-3, OCR формула IF = N + IB*(A+C+D+F), тезаурус).")
+    except Exception as e:
+        print(f"Предупреждение: DINO/Dewarp недоступен ({e}), используется только SigLIP.")
 
     correct = 0
     total = len(queries)
     latencies = []
 
     print("\n" + "-" * 80)
-    print(f"{'#':<3} | {'Query ID':<9} | {'Файл':<14} | {'Статус':<7} | {'Top-1 Slug':<32} | {'Время'}")
+    print(f"{'#':<3} | {'Query ID':<9} | {'Файл':<14} | {'Статус':<7} | {'Top-1 Slug':<32} | {'Conf':<7} | {'Время'}")
     print("-" * 80)
 
     with open(output_path, "w", encoding="utf-8", newline="\n") as out_f:
@@ -146,13 +162,60 @@ def run_direct_eval(queries, images_dir: Path, output_path: Path, mapping: dict)
             img_bgr = cv2.imread(str(image_file))
 
             t0 = time.perf_counter()
-            results = engine.search_by_cv2_image(img_bgr, top_k=1)
+            confidence = 0.0
+            if ranker and dewarp:
+                try:
+                    pipeline_result = dewarp.process_image(img_bgr)
+                    ocr_text = pipeline_result.get("full_text", "")
+                    dewarped_b64 = pipeline_result.get("artifacts", {}).get("dewarped")
+                    dewarped_img = None
+                    if dewarped_b64:
+                        try:
+                            import base64, numpy as np
+                            if "," in dewarped_b64:
+                                dewarped_b64 = dewarped_b64.split(",")[1]
+                            d_bytes = base64.b64decode(dewarped_b64)
+                            dewarped_img = cv2.imdecode(np.frombuffer(d_bytes, np.uint8), cv2.IMREAD_COLOR)
+                        except Exception:
+                            pass
+
+                    s_sig, s_dino = ranker.embedding_scores(img_bgr)
+                    if dewarped_img is not None and dewarped_img.size > 0:
+                        try:
+                            from PIL import Image as _PILImage
+                            pil_dew = _PILImage.fromarray(cv2.cvtColor(dewarped_img, cv2.COLOR_BGR2RGB))
+                            s_sig_dew = ranker._all_scores(engine.index, engine.slugs, engine.get_embedding(pil_dew))
+                            for sl, sc in s_sig_dew.items():
+                                if sc > s_sig.get(sl, 0.0):
+                                    s_sig[sl] = sc
+                        except Exception:
+                            pass
+
+                    ranked = ranker.rank(img_bgr, ocr_text, top_n=1, s_sig=s_sig, s_dino=s_dino)
+                    if ranked:
+                        confidence = ranked[0]["IF"]
+                        predicted_slug = ranked[0]["slug"] if confidence >= CONFIDENCE_THRESHOLD else None
+                    else:
+                        predicted_slug = None
+                except Exception as e_proc:
+                    results = engine.search_by_cv2_image(img_bgr, top_k=1)
+                    predicted_slug = results[0]["slug"] if results else None
+            else:
+                results = engine.search_by_cv2_image(img_bgr, top_k=1)
+                if results:
+                    confidence = round(results[0].get("score", 0.0) * 100, 1)
+                    predicted_slug = results[0]["slug"] if confidence >= CONFIDENCE_THRESHOLD else None
+                else:
+                    predicted_slug = None
+
             latency_ms = round((time.perf_counter() - t0) * 1000)
             latencies.append(latency_ms)
 
-            predicted_slug = results[0]["slug"] if results else None
             expected = mapping.get(query_id)
-            ok = (predicted_slug and predicted_slug == expected)
+            if expected is None:
+                ok = (predicted_slug is None)
+            else:
+                ok = (predicted_slug and predicted_slug == expected)
             if ok:
                 correct += 1
                 status = "✓ OK"
@@ -160,7 +223,8 @@ def run_direct_eval(queries, images_dir: Path, output_path: Path, mapping: dict)
                 status = "✗ FAIL"
 
             slug_disp = (predicted_slug or "null")[:32]
-            print(f"{idx:02d} | {query_id:<9} | {image_relpath:<14} | {status:<7} | {slug_disp:<32} | {latency_ms} ms")
+            conf_disp = f"{confidence:.1f}%"
+            print(f"{idx:02d} | {query_id:<9} | {image_relpath:<14} | {status:<7} | {slug_disp:<32} | {conf_disp:<7} | {latency_ms} ms")
             if not ok and expected:
                 print(f"    ↳ Ожидался : {expected}")
                 print(f"    ↳ Получен  : {predicted_slug}")
@@ -180,25 +244,41 @@ def run_direct_eval(queries, images_dir: Path, output_path: Path, mapping: dict)
 
 def main():
     parser = argparse.ArgumentParser(description="Тест точности и производительности VINA Scanner")
-    parser.add_argument("--run", type=str, default="1", choices=["1", "2"], help="Номер прогона заказчика (1: каталожные, 2: полевые)")
-    parser.add_argument("--mode", type=str, default="direct", choices=["direct", "http"], help="Режим: direct (локальный движок) или http (веб-сервер)")
+    parser.add_argument("--run", type=str, default="1", help="Номер прогона (1, 2) или пользовательское имя")
+    parser.add_argument("--mode", type=str, default="http", choices=["direct", "http"], help="Режим: http (FastAPI сервер на GPU) или direct (локальный движок)")
     parser.add_argument("--endpoint", type=str, default="http://127.0.0.1:8080/v1/eval/predict", help="HTTP эндпоинт для режима http")
-    parser.add_argument("--eval-root", type=Path, default=Path(r"D:\VINA2\owner_eval"), help="Путь к папке owner_eval")
+    default_eval_root = Path(r"D:\VINA\owner_eval") if Path(r"D:\VINA\owner_eval").exists() else Path(r"D:\VINA2\owner_eval")
+    parser.add_argument("--eval-root", type=Path, default=default_eval_root, help="Путь к тестовому пакету")
+    parser.add_argument("--output", type=Path, default=None, help="Путь для сохранения файла ответов")
     args = parser.parse_args()
 
-    pack_dir = args.eval_root / args.run
+    pack_dir = args.eval_root
+    is_custom_pack = (pack_dir / "mapping.json").exists()
+    if not is_custom_pack:
+        pack_dir = args.eval_root / args.run
+        
     manifest_path = pack_dir / "queries.tsv"
     mapping_path = pack_dir / "mapping.json"
     images_dir = pack_dir / "queries"
 
-    output_dir = Path(r"D:\VINA\eval_results") / args.run
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / "predictions_vina.jsonl"
+    if args.output:
+        output_path = args.output
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    elif is_custom_pack:
+        pack_name = pack_dir.name
+        output_dir = Path(r"D:\VINA\eval_results") / pack_name
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / "predictions_vina.jsonl"
+    else:
+        output_dir = Path(r"D:\VINA\eval_results") / args.run
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / "predictions_vina.jsonl"
 
+    display_title = f"{pack_dir.name} (100 бутылок)" if is_custom_pack else f"ПРОГОН {args.run}"
     print("=" * 80)
-    print(f"      ТЕСТ СИСТЕМЫ РАСПОЗНАВАНИЯ VINA SCANNER (ПРОГОН {args.run})")
+    print(f"      ТЕСТ СИСТЕМЫ РАСПОЗНАВАНИЯ VINA SCANNER ({display_title})")
     print("=" * 80)
-    print(f"• Режим тестирования: {args.mode.upper()}")
+    print(f"• Режим тестирования: {args.mode.upper()} (GPU)")
     print(f"• Пакет данных      : {pack_dir}")
     print(f"• Папка с фото      : {images_dir}")
     print(f"• Манифест          : {manifest_path}")
@@ -233,7 +313,7 @@ def main():
     avg_lat = sum(latencies) / len(latencies) if latencies else 0.0
 
     print("\n" + "=" * 80)
-    print(f" ИТОГОВЫЕ РЕЗУЛЬТАТЫ VINA SCANNER (ПРОГОН {args.run}):")
+    print(f" ИТОГОВЫЕ РЕЗУЛЬТАТЫ VINA SCANNER ({display_title}):")
     print("=" * 80)
     print(f"• Режим           : {args.mode.upper()}")
     print(f"• Файл ответов    : {output_path}")
@@ -242,6 +322,17 @@ def main():
     print(f"• Время отклика   : среднее {avg_lat:.0f} ms (мин: {min(latencies)} ms, макс: {max(latencies)} ms)")
     print(f"• Общее время     : {total_time:.1f} с")
     print("=" * 80 + "\n")
+
+    # Синхронизируем с файлом в корне пакета, если это финальный Eval
+    eval_root_pred = pack_dir / "predictions.jsonl"
+    if is_custom_pack and output_path != eval_root_pred:
+        try:
+            import shutil
+            shutil.copy2(output_path, eval_root_pred)
+            print(f"✓ Копия сохранена в {eval_root_pred} для организатора конкурса.")
+        except Exception:
+            pass
+
     return 0
 
 

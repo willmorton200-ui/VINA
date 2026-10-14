@@ -199,24 +199,9 @@ class SAMRefiner:
         ]
         labels_list = [1, 1, 1]
         
-        # Structural Edge Detection (исключительно внутри коробки YOLO)
-        top_edge_y, bottom_edge_y = self._find_structural_edges(
-            roi_bgr_up, bx1_local, by1_local, bx2_local, by2_local
-        )
-        
-        if top_edge_y is not None:
-            # Ставим отрицательную точку выше физического края, чтобы отсечь жидкость/горлышко
-            neg_y = max(by1_local, top_edge_y - int(bh_local * 0.05))
-            pts_list.append([cx_local, neg_y])
-            labels_list.append(0)
-            logger.info(f"[SAMRefiner] Added NEGATIVE point at TOP {neg_y} (Edge at {top_edge_y})")
-            
-        if bottom_edge_y is not None:
-            # Ставим отрицательную точку ниже физического края
-            neg_y = min(by2_local, bottom_edge_y + int(bh_local * 0.05))
-            pts_list.append([cx_local, neg_y])
-            labels_list.append(0)
-            logger.info(f"[SAMRefiner] Added NEGATIVE point at BOTTOM {neg_y} (Edge at {bottom_edge_y})")
+        # Structural edge detection is disabled because it frequently places negative 
+        # points on large text (like vintage years or brand names) near the top/bottom 
+        # of the label, causing SAM to actively carve dents out of the mask where the text is.
 
         pts_local = np.array(pts_list, dtype=np.float32)
         labels_local = np.array(labels_list, dtype=np.int32)

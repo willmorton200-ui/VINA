@@ -30,7 +30,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo.
 echo [2/2] Loading neural networks into RTX 3090 VRAM...
-echo       YOLOv8-seg, SAM, PP-OCRv4, EasyOCR, SigLIP2, FAISS catalog
+echo       YOLOv8-seg, PP-OCRv4, EasyOCR, SigLIP2, DINOv2-LoRA, FAISS catalog
 echo.
 echo       Please wait 8-10 seconds.
 echo       The browser (http://127.0.0.1:8080) will open AUTOMATICALLY
