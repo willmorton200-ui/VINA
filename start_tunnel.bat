@@ -20,6 +20,10 @@ echo ======================================================================
 echo.
 taskkill /F /IM cloudflared.exe >nul 2>&1
 
-.\bin\cloudflared.exe tunnel --protocol http2 --url http://127.0.0.1:8080
+if exist bridge_tunnel.py (
+    python -u bridge_tunnel.py
+) else (
+    .\bin\cloudflared.exe tunnel --edge-ip-version 4 --protocol http2 --url http://127.0.0.1:8080
+)
 
 pause
