@@ -18,7 +18,6 @@ import os
 import sys
 import time
 from pathlib import Path
-import cv2
 import httpx
 
 
@@ -34,16 +33,23 @@ def calculate_sha256(filepath: Path) -> str:
 
 
 def run_http_eval(queries, images_dir: Path, endpoint: str, output_path: Path, mapping: dict):
+    endpoint = endpoint.strip().rstrip("/")
+    if not endpoint.endswith("/v1/eval/predict"):
+        if endpoint.endswith("/v1/eval"):
+            endpoint = f"{endpoint}/predict"
+        else:
+            endpoint = f"{endpoint}/v1/eval/predict"
+
     print(f"\n[HTTP РЕЖИМ] Отправка запросов на {endpoint}...")
     client = httpx.Client(timeout=60.0)
 
     base_url = endpoint.rsplit("/", 2)[0]
     try:
-        r = client.get(f"{base_url}/api/health", timeout=2.0)
+        r = client.get(f"{base_url}/api/health", timeout=3.0)
         if r.status_code == 200:
             print("✓ Сервер VINA Studio активен и готов к обработке.")
     except Exception as e:
-        print(f"Предупреждение: Сервер на {endpoint} не отвечает ({e}). Убедитесь, что запущен app.py!")
+        print(f"Предупреждение: Сервер на {endpoint} не отвечает ({e}). Убедитесь, что запущен app.py и тоннель!")
 
     correct = 0
     total = len(queries)
@@ -246,40 +252,64 @@ def main():
     parser = argparse.ArgumentParser(description="Тест точности и производительности VINA Scanner")
     parser.add_argument("--run", type=str, default="1", help="Номер прогона (1, 2) или пользовательское имя")
     parser.add_argument("--mode", type=str, default="http", choices=["direct", "http"], help="Режим: http (FastAPI сервер на GPU) или direct (локальный движок)")
-    parser.add_argument("--endpoint", type=str, default="http://127.0.0.1:8080/v1/eval/predict", help="HTTP эндпоинт для режима http")
-    repo_root = Path(__file__).resolve().parent
-    if (repo_root / "eval").exists():
-        default_eval_root = repo_root / "eval"
-    elif (repo_root / "owner_eval").exists():
-        default_eval_root = repo_root / "owner_eval"
-    elif Path(r"D:\Eval").exists():
-        default_eval_root = Path(r"D:\Eval")
-    else:
-        default_eval_root = repo_root / "eval"
-
-    parser.add_argument("--eval-root", type=Path, default=default_eval_root, help="Путь к тестовому пакету")
+    parser.add_argument("--endpoint", type=str, default="http://127.0.0.1:8080/v1/eval/predict", help="HTTP эндпоинт VINA API (по умолчанию http://127.0.0.1:8080/v1/eval/predict)")
+    parser.add_argument("--eval-root", type=Path, default=None, help="Путь к тестовому пакету")
     parser.add_argument("--output", type=Path, default=None, help="Путь для сохранения файла ответов")
     args = parser.parse_args()
+    repo_root = Path(__file__).resolve().parent
 
-    pack_dir = args.eval_root
-    is_custom_pack = (pack_dir / "mapping.json").exists()
-    if not is_custom_pack:
-        pack_dir = args.eval_root / args.run
-        
+    pack_dir = None
+    if args.eval_root:
+        if (args.eval_root / "mapping.json").exists():
+            pack_dir = args.eval_root
+        elif (args.eval_root / args.run / "queries.tsv").exists():
+            pack_dir = args.eval_root / args.run
+        else:
+            pack_dir = args.eval_root
+    elif str(args.run).lower() in ("eval", "100"):
+        candidates = [
+            repo_root / "experiments" / "eval_tools" / "eval",
+            repo_root / "eval",
+            Path(r"D:\Eval")
+        ]
+        for c in candidates:
+            if c.exists() and (c / "mapping.json").exists():
+                pack_dir = c
+                break
+    else:
+        # Прогоны 1, 2, 119 и т.д. (owner_eval)
+        candidates = [
+            repo_root / "experiments" / "eval_tools" / "owner_eval" / args.run,
+            repo_root / "owner_eval" / args.run,
+            Path(r"D:\VINA\owner_eval") / args.run,
+        ]
+        for c in candidates:
+            if c.exists() and ((c / "queries.tsv").exists() or (c / "mapping.json").exists()):
+                pack_dir = c
+                break
+
+    if not pack_dir or not pack_dir.exists():
+        print(f"ОШИБКА: Тестовый пакет для --run {args.run} не найден!", file=sys.stderr)
+        return 1
+
+    is_custom_pack = (str(args.run).lower() in ("eval", "100") or pack_dir.name in ("eval", "Eval"))
+
     manifest_path = pack_dir / "queries.tsv"
     mapping_path = pack_dir / "mapping.json"
     images_dir = pack_dir / "queries"
+
+    output_base = repo_root / "eval_results"
+    output_base.mkdir(parents=True, exist_ok=True)
 
     if args.output:
         output_path = args.output
         output_path.parent.mkdir(parents=True, exist_ok=True)
     elif is_custom_pack:
-        pack_name = pack_dir.name
-        output_dir = repo_root / "eval_results" / pack_name
+        output_dir = output_base / "eval"
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / "predictions_vina.jsonl"
     else:
-        output_dir = repo_root / "eval_results" / args.run
+        output_dir = output_base / args.run
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / "predictions_vina.jsonl"
 
