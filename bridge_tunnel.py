@@ -68,6 +68,12 @@ try:
             if match:
                 tunnel_url = match.group(0)
                 try:
+                    with open("tunnel_url.txt", "w", encoding="utf-8") as f_u:
+                        f_u.write(tunnel_url.strip())
+                except Exception:
+                    pass
+
+                try:
                     subprocess.run("clip", input=tunnel_url.strip(), text=True, check=True)
                     copied_msg = "  [СКОПИРОВАНО В БУФЕР ОБМЕНА!]"
                 except Exception:

@@ -18,7 +18,6 @@ import os
 import sys
 import time
 from pathlib import Path
-import cv2
 import httpx
 
 
@@ -34,16 +33,23 @@ def calculate_sha256(filepath: Path) -> str:
 
 
 def run_http_eval(queries, images_dir: Path, endpoint: str, output_path: Path, mapping: dict):
+    endpoint = endpoint.strip().rstrip("/")
+    if not endpoint.endswith("/v1/eval/predict"):
+        if endpoint.endswith("/v1/eval"):
+            endpoint = f"{endpoint}/predict"
+        else:
+            endpoint = f"{endpoint}/v1/eval/predict"
+
     print(f"\n[HTTP РЕЖИМ] Отправка запросов на {endpoint}...")
     client = httpx.Client(timeout=60.0)
 
     base_url = endpoint.rsplit("/", 2)[0]
     try:
-        r = client.get(f"{base_url}/api/health", timeout=2.0)
+        r = client.get(f"{base_url}/api/health", timeout=3.0)
         if r.status_code == 200:
             print("✓ Сервер VINA Studio активен и готов к обработке.")
     except Exception as e:
-        print(f"Предупреждение: Сервер на {endpoint} не отвечает ({e}). Убедитесь, что запущен app.py!")
+        print(f"Предупреждение: Сервер на {endpoint} не отвечает ({e}). Убедитесь, что запущен app.py и тоннель!")
 
     correct = 0
     total = len(queries)
