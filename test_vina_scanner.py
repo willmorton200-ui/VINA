@@ -247,7 +247,20 @@ def main():
     parser.add_argument("--run", type=str, default="1", help="Номер прогона (1, 2) или пользовательское имя")
     parser.add_argument("--mode", type=str, default="http", choices=["direct", "http"], help="Режим: http (FastAPI сервер на GPU) или direct (локальный движок)")
     parser.add_argument("--endpoint", type=str, default="http://127.0.0.1:8080/v1/eval/predict", help="HTTP эндпоинт для режима http")
-    default_eval_root = Path(r"D:\VINA\owner_eval") if Path(r"D:\VINA\owner_eval").exists() else Path(r"D:\VINA2\owner_eval")
+    repo_root = Path(__file__).resolve().parent
+    if (repo_root / "experiments" / "eval_tools" / "eval").exists():
+        default_eval_root = repo_root / "experiments" / "eval_tools" / "eval"
+    elif (repo_root / "experiments" / "eval_tools" / "owner_eval").exists():
+        default_eval_root = repo_root / "experiments" / "eval_tools" / "owner_eval"
+    elif (repo_root / "eval").exists():
+        default_eval_root = repo_root / "eval"
+    elif (repo_root / "owner_eval").exists():
+        default_eval_root = repo_root / "owner_eval"
+    elif Path(r"D:\Eval").exists():
+        default_eval_root = Path(r"D:\Eval")
+    else:
+        default_eval_root = repo_root / "experiments" / "eval_tools" / "eval"
+
     parser.add_argument("--eval-root", type=Path, default=default_eval_root, help="Путь к тестовому пакету")
     parser.add_argument("--output", type=Path, default=None, help="Путь для сохранения файла ответов")
     args = parser.parse_args()
@@ -266,11 +279,11 @@ def main():
         output_path.parent.mkdir(parents=True, exist_ok=True)
     elif is_custom_pack:
         pack_name = pack_dir.name
-        output_dir = Path(r"D:\VINA\eval_results") / pack_name
+        output_dir = repo_root / "experiments" / "eval_tools" / "eval_results" / pack_name
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / "predictions_vina.jsonl"
     else:
-        output_dir = Path(r"D:\VINA\eval_results") / args.run
+        output_dir = repo_root / "experiments" / "eval_tools" / "eval_results" / args.run
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / "predictions_vina.jsonl"
 
