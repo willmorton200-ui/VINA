@@ -1,0 +1,51 @@
+name: VINA Scanner Remote Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_run:
+        description: 'Пакет для тестирования'
+        required: true
+        default: '1'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - 'eval'
+          - '119'
+      endpoint:
+        description: 'URL эндпоинта VINA (из Cloudflare Tunnel, например https://xxxx.trycloudflare.com/v1/eval/predict)'
+        required: true
+        type: string
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Benchmark Branch
+        uses: actions/checkout@v4
+        with:
+          ref: eval-benchmarks
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Test Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install httpx
+
+      - name: Execute Evaluation Run
+        run: |
+          python test_vina_scanner.py --run "${{ inputs.test_run }}" --endpoint "${{ inputs.endpoint }}" --mode http
+
+      - name: Upload Test Predictions Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: predictions-run-${{ inputs.test_run }}
+          path: eval_results/
+          retention-days: 14
