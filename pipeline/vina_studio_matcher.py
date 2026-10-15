@@ -224,13 +224,13 @@ class VinaStudioMatcher:
                 self.slug_to_name[slug] = name
         print(f"[VinaStudioMatcher] Загружено {len(self.slug_to_name)} slug → name")
     
-    def compute_ocr_bonus(self, slug: str, ocr_words: set, ocr_text: str = "") -> Tuple[int, int, int, List[str]]:
+    def compute_ocr_bonus(self, slug: str, ocr_words: set, ocr_text: str = "") -> Tuple[int, int, int, List[str], float]:
         import difflib
         slug_word_groups = extract_slug_words(slug)
         
         brand_words = set()
         wine_info = self.catalog.get_wine(slug)
-        if wine_info and wine_info.get("winery"):
+        if wine_info and isinstance(wine_info, dict) and isinstance(wine_info.get("winery"), str):
             brand_words.update(extract_ocr_words(wine_info["winery"]))
             
         total_words = len(slug_word_groups)
