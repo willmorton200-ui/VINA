@@ -58,14 +58,20 @@ agora-yachting-cabernet-sauvignon.png
 "Оценка полные бокалы.png"
 "Поставь оценку.png"
 
-# Shell/Bat scripts in root (except start_app.bat)
+# Shell/Bat scripts in root
 *.bat
 !start_app.bat
+!start_tunnel.bat
+!запустить_тест_1.bat
+!запустить_тест_2.bat
+!запустить_тест_eval.bat
 
-# Heavy datasets and media dumps
+# Heavy datasets, experiments and media dumps
+experiments/
 media/
 wines_images_clean/
 **/owner_eval/
+**/eval/
 **/test_dataset/
 **/ready_dataset/
 **/roboflow_bottle_labels/
