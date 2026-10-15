@@ -1,0 +1,130 @@
+{
+  "positive_count": 25,
+  "cases": [
+    {
+      "query_id": "q-000076",
+      "expected_slug": "",
+      "image_path": "eval_photo_076.webp"
+    },
+    {
+      "query_id": "q-000077",
+      "expected_slug": "",
+      "image_path": "eval_photo_077.webp"
+    },
+    {
+      "query_id": "q-000078",
+      "expected_slug": "",
+      "image_path": "eval_photo_078.webp"
+    },
+    {
+      "query_id": "q-000079",
+      "expected_slug": "",
+      "image_path": "eval_photo_079.webp"
+    },
+    {
+      "query_id": "q-000080",
+      "expected_slug": "",
+      "image_path": "eval_photo_080.webp"
+    },
+    {
+      "query_id": "q-000081",
+      "expected_slug": "",
+      "image_path": "eval_photo_081.webp"
+    },
+    {
+      "query_id": "q-000082",
+      "expected_slug": "",
+      "image_path": "eval_photo_082.webp"
+    },
+    {
+      "query_id": "q-000083",
+      "expected_slug": "",
+      "image_path": "eval_photo_083.webp"
+    },
+    {
+      "query_id": "q-000084",
+      "expected_slug": "",
+      "image_path": "eval_photo_084.webp"
+    },
+    {
+      "query_id": "q-000085",
+      "expected_slug": "",
+      "image_path": "eval_photo_085.webp"
+    },
+    {
+      "query_id": "q-000086",
+      "expected_slug": "",
+      "image_path": "eval_photo_086.webp"
+    },
+    {
+      "query_id": "q-000087",
+      "expected_slug": "",
+      "image_path": "eval_photo_087.webp"
+    },
+    {
+      "query_id": "q-000088",
+      "expected_slug": "",
+      "image_path": "eval_photo_088.webp"
+    },
+    {
+      "query_id": "q-000089",
+      "expected_slug": "",
+      "image_path": "eval_photo_089.webp"
+    },
+    {
+      "query_id": "q-000090",
+      "expected_slug": "",
+      "image_path": "eval_photo_090.webp"
+    },
+    {
+      "query_id": "q-000091",
+      "expected_slug": "",
+      "image_path": "eval_photo_091.webp"
+    },
+    {
+      "query_id": "q-000092",
+      "expected_slug": "",
+      "image_path": "eval_photo_092.webp"
+    },
+    {
+      "query_id": "q-000093",
+      "expected_slug": "",
+      "image_path": "eval_photo_093.webp"
+    },
+    {
+      "query_id": "q-000094",
+      "expected_slug": "",
+      "image_path": "eval_photo_094.webp"
+    },
+    {
+      "query_id": "q-000095",
+      "expected_slug": "",
+      "image_path": "eval_photo_095.webp"
+    },
+    {
+      "query_id": "q-000096",
+      "expected_slug": "",
+      "image_path": "eval_photo_096.webp"
+    },
+    {
+      "query_id": "q-000097",
+      "expected_slug": "",
+      "image_path": "eval_photo_097.webp"
+    },
+    {
+      "query_id": "q-000098",
+      "expected_slug": "",
+      "image_path": "eval_photo_098.webp"
+    },
+    {
+      "query_id": "q-000099",
+      "expected_slug": "",
+      "image_path": "eval_photo_099.webp"
+    },
+    {
+      "query_id": "q-000100",
+      "expected_slug": "",
+      "image_path": "eval_photo_100.webp"
+    }
+  ]
+}

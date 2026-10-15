@@ -65,7 +65,7 @@ agora-yachting-cabernet-sauvignon.png
 # Heavy datasets and media dumps
 media/
 wines_images_clean/
-owner_eval/
+# owner_eval/ is tracked in eval-benchmarks branch
 test_dataset/
 ready_dataset/
 roboflow_bottle_labels/

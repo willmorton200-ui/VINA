@@ -8,7 +8,11 @@ echo           VINA Scanner: Финальная оценка точности (D
 echo      Пайплайн: Qwen2-VL GPU + DINOv2-LoRA + SigLIP2 + Formula IF
 echo ======================================================================
 echo.
-python test_vina_scanner.py --eval-root D:\Eval --mode http %*
+if exist eval (
+    python test_vina_scanner.py --eval-root eval --mode http %*
+) else (
+    python test_vina_scanner.py --eval-root D:\Eval --mode http %*
+)
 
 echo.
 pause

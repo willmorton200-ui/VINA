@@ -1,0 +1,505 @@
+{
+  "positive_count": 100,
+  "cases": [
+    {
+      "query_id": "q-000001",
+      "expected_slug": "imenie-sikory-pino-nuar-semeynyy-rezerv-krasnoe-suhoe-14",
+      "image_path": "eval_photo_001.webp"
+    },
+    {
+      "query_id": "q-000002",
+      "expected_slug": "derbent-vino-desono-kaberne-sovinon-krasnoe-suhoe-125",
+      "image_path": "eval_photo_002.webp"
+    },
+    {
+      "query_id": "q-000003",
+      "expected_slug": "imenie-sikory-shardone-sikory-beloe-suhoe-13",
+      "image_path": "eval_photo_003.webp"
+    },
+    {
+      "query_id": "q-000004",
+      "expected_slug": "villa-sofiya-risling-beloe-suhoe-131",
+      "image_path": "eval_photo_004.webp"
+    },
+    {
+      "query_id": "q-000005",
+      "expected_slug": "inkermanskiy-zmv-kokur-belyy-ekstra-bryut-beloe-135",
+      "image_path": "eval_photo_005.webp"
+    },
+    {
+      "query_id": "q-000006",
+      "expected_slug": "nikolaev-i-synovya-flamingo-malbek-rozovoe-suhoe-125",
+      "image_path": "eval_photo_006.webp"
+    },
+    {
+      "query_id": "q-000007",
+      "expected_slug": "nikolaev-i-synovya-shardone-beloe-suhoe-125",
+      "image_path": "eval_photo_007.webp"
+    },
+    {
+      "query_id": "q-000008",
+      "expected_slug": "oleg-repin-listva-syrah-sira-krasnoe-suhoe-14",
+      "image_path": "eval_photo_008.webp"
+    },
+    {
+      "query_id": "q-000009",
+      "expected_slug": "vinodelnya-krinitsa-azyur-vione-beloe-suhoe-12",
+      "image_path": "eval_photo_009.webp"
+    },
+    {
+      "query_id": "q-000010",
+      "expected_slug": "relikta-relikta-dekabrskiy-krasnoe-polusladkoe-125",
+      "image_path": "eval_photo_010.webp"
+    },
+    {
+      "query_id": "q-000011",
+      "expected_slug": "agora-pino-nuar",
+      "image_path": "eval_photo_011.webp"
+    },
+    {
+      "query_id": "q-000012",
+      "expected_slug": "skalistyy-bereg-skalistyy-bereg-sovinon-blan-beloe-suhoe-12",
+      "image_path": "eval_photo_012.webp"
+    },
+    {
+      "query_id": "q-000013",
+      "expected_slug": "shardone-2",
+      "image_path": "eval_photo_013.webp"
+    },
+    {
+      "query_id": "q-000014",
+      "expected_slug": "aratti-kaberne-sovinon-2021-krasnoe-suhoe",
+      "image_path": "eval_photo_014.webp"
+    },
+    {
+      "query_id": "q-000015",
+      "expected_slug": "gunko-winery-sovinon-blan-gunko-winery-beloe-suhoe-135",
+      "image_path": "eval_photo_015.webp"
+    },
+    {
+      "query_id": "q-000016",
+      "expected_slug": "massandra-muskatel-belyy-belye-sorta-vinograda-beloe-sladkoe-16",
+      "image_path": "eval_photo_016.webp"
+    },
+    {
+      "query_id": "q-000017",
+      "expected_slug": "relikta-relikta-sira-kaberne-fran-krasnoe-suhoe-13",
+      "image_path": "eval_photo_017.webp"
+    },
+    {
+      "query_id": "q-000018",
+      "expected_slug": "belaya-lvicza",
+      "image_path": "eval_photo_018.webp"
+    },
+    {
+      "query_id": "q-000019",
+      "expected_slug": "aratti-kaberne-sovinon-2020-krasnoe-suhoe",
+      "image_path": "eval_photo_019.webp"
+    },
+    {
+      "query_id": "q-000020",
+      "expected_slug": "skalistyy-bereg-skalistyy-bereg-krasnaya-kniga-glava-2-merlo-krasnoe-suhoe-15",
+      "image_path": "eval_photo_020.webp"
+    },
+    {
+      "query_id": "q-000021",
+      "expected_slug": "zhemchuzhnaya-9-aligote-czitron",
+      "image_path": "eval_photo_021.webp"
+    },
+    {
+      "query_id": "q-000022",
+      "expected_slug": "sober-bash-trezvaya-golova-saperavi-krasnoe-suhoe-14",
+      "image_path": "eval_photo_022.webp"
+    },
+    {
+      "query_id": "q-000023",
+      "expected_slug": "zakat-denisov-vajneri",
+      "image_path": "eval_photo_023.webp"
+    },
+    {
+      "query_id": "q-000024",
+      "expected_slug": "sober-bash-trezvaya-golova-rkatsiteli-beloe-suhoe-12",
+      "image_path": "eval_photo_024.webp"
+    },
+    {
+      "query_id": "q-000025",
+      "expected_slug": "sober-bash-trezvaya-golova-rozovoe-krasnostop-zolotovskiy-suhoe-115",
+      "image_path": "eval_photo_025.webp"
+    },
+    {
+      "query_id": "q-000026",
+      "expected_slug": "tsimlyanskie-vina-krepost-sarkel-krasnostop-zolotovskiy-krasnoe-suhoe-145",
+      "image_path": "eval_photo_026.webp"
+    },
+    {
+      "query_id": "q-000027",
+      "expected_slug": "usadba-markoth-kaberne-sovinon-rezerv-krasnoe-suhoe-13",
+      "image_path": "eval_photo_027.webp"
+    },
+    {
+      "query_id": "q-000028",
+      "expected_slug": "leto-kaberne-fran-2024-polusladkoe-krasnoe",
+      "image_path": "eval_photo_028.webp"
+    },
+    {
+      "query_id": "q-000029",
+      "expected_slug": "semeynaya-vinodelnya-mihaila-kolesnikova-ispanets-kaberne-sovinon-krasnoe-suhoe-148",
+      "image_path": "eval_photo_029.webp"
+    },
+    {
+      "query_id": "q-000030",
+      "expected_slug": "zhemchuzhnaya-9-sovinon-blan-aligote",
+      "image_path": "eval_photo_030.webp"
+    },
+    {
+      "query_id": "q-000031",
+      "expected_slug": "usadba-markoth-shardone-beloe-suhoe-12",
+      "image_path": "eval_photo_031.webp"
+    },
+    {
+      "query_id": "q-000032",
+      "expected_slug": "usadba-mezyb-usadba-mezyb-merlo-krasnoe-suhoe-15",
+      "image_path": "eval_photo_032.webp"
+    },
+    {
+      "query_id": "q-000033",
+      "expected_slug": "golubitskoe-estate-chardonnay",
+      "image_path": "eval_photo_033.webp"
+    },
+    {
+      "query_id": "q-000034",
+      "expected_slug": "denisov-winery-risling-beloe-suhoe-115",
+      "image_path": "eval_photo_034.webp"
+    },
+    {
+      "query_id": "q-000035",
+      "expected_slug": "vinodelnya-vedernikov-fantom-3070-krasnostop-zolotovskiy-krasnoe-suhoe-145",
+      "image_path": "eval_photo_035.webp"
+    },
+    {
+      "query_id": "q-000036",
+      "expected_slug": "vinodelnya-uzunov-mono-kaberne-sovinon-krasnoe-suhoe-139",
+      "image_path": "eval_photo_036.webp"
+    },
+    {
+      "query_id": "q-000037",
+      "expected_slug": "chteau-le-grand-vostock-aligote-reserve-aligote-beloe-suhoe-13",
+      "image_path": "eval_photo_037.webp"
+    },
+    {
+      "query_id": "q-000038",
+      "expected_slug": "zhemchuzhnaya-9-muskat-rozovyj-kaberne-sovinon",
+      "image_path": "eval_photo_038.webp"
+    },
+    {
+      "query_id": "q-000039",
+      "expected_slug": "vinodelnya-myshako-sovinon-blan-beloe-suhoe-122",
+      "image_path": "eval_photo_039.webp"
+    },
+    {
+      "query_id": "q-000040",
+      "expected_slug": "valeriy-zaharin-avtorskoe-vino-ot-valeriya-zaharina-bastardo-bastardo-magarachskiy-krasnoe-suhoe-12",
+      "image_path": "eval_photo_040.webp"
+    },
+    {
+      "query_id": "q-000041",
+      "expected_slug": "oleg-repin-listva-syrah-sira-krasnoe-suhoe-14",
+      "image_path": "eval_photo_041.webp"
+    },
+    {
+      "query_id": "q-000042",
+      "expected_slug": "vinodelnya-batrak-kaberne-kortis-krasnoe-suhoe-12",
+      "image_path": "eval_photo_042.webp"
+    },
+    {
+      "query_id": "q-000043",
+      "expected_slug": "derbent-vino-endemy-shardone-beloe-bryut-105-125",
+      "image_path": "eval_photo_043.webp"
+    },
+    {
+      "query_id": "q-000044",
+      "expected_slug": "fanagoriya-zelyonoe-vino-risling-tsitronnyy-magaracha-beloe-polusuhoe-11",
+      "image_path": "eval_photo_044.webp"
+    },
+    {
+      "query_id": "q-000045",
+      "expected_slug": "soyuz-vino-soyuz-vino-shardone-beloe-polusladkoe-beg-in-boks-12",
+      "image_path": "eval_photo_045.webp"
+    },
+    {
+      "query_id": "q-000046",
+      "expected_slug": "skalistyy-bereg-skalistyy-bereg-krasnaya-kniga-glava-2-merlo-krasnoe-suhoe-15",
+      "image_path": "eval_photo_046.webp"
+    },
+    {
+      "query_id": "q-000047",
+      "expected_slug": "vinodelnya-krinitsa-ester-muskat-belyy-beloe-suhoe-12",
+      "image_path": "eval_photo_047.webp"
+    },
+    {
+      "query_id": "q-000048",
+      "expected_slug": "chateau-de-talu-ruzh-kaberne-sovinon-krasnoe-suhoe-14",
+      "image_path": "eval_photo_048.webp"
+    },
+    {
+      "query_id": "q-000049",
+      "expected_slug": "fanagoriya-zelyonoe-vino-risling-tsitronnyy-magaracha-beloe-polusuhoe-11",
+      "image_path": "eval_photo_049.webp"
+    },
+    {
+      "query_id": "q-000050",
+      "expected_slug": "vinodelnya-marchenko-gechei-zamatosh-beloe-suhoe-135",
+      "image_path": "eval_photo_050.webp"
+    },
+    {
+      "query_id": "q-000051",
+      "expected_slug": "vinodelnya-marchenko-krasnostop-zolotovskiy-krasnoe-suhoe-14",
+      "image_path": "eval_photo_051.webp"
+    },
+    {
+      "query_id": "q-000052",
+      "expected_slug": "abrau-dyurso-kaberne-sovinon-krasnoe-suhoe-125",
+      "image_path": "eval_photo_052.webp"
+    },
+    {
+      "query_id": "q-000053",
+      "expected_slug": "leto-kollekcziya-leta-kupazh-2023-suhoe-krasnoe",
+      "image_path": "eval_photo_053.webp"
+    },
+    {
+      "query_id": "q-000054",
+      "expected_slug": "vinodelnya-myshako-quintessence-new-generation-kaberne-fran-krasnoe-suhoe-145",
+      "image_path": "eval_photo_054.webp"
+    },
+    {
+      "query_id": "q-000055",
+      "expected_slug": "denisov_barynya_kurmyshi",
+      "image_path": "eval_photo_055.webp"
+    },
+    {
+      "query_id": "q-000056",
+      "expected_slug": "vinodelnya-raevskoe-renessans-karmener-krasnoe-suhoe-12",
+      "image_path": "eval_photo_056.webp"
+    },
+    {
+      "query_id": "q-000057",
+      "expected_slug": "vinodelnya-vedernikov-rkatsiteli-beloe-suhoe-13",
+      "image_path": "eval_photo_057.webp"
+    },
+    {
+      "query_id": "q-000058",
+      "expected_slug": "gaj-kodzor-sovinon-blan",
+      "image_path": "eval_photo_058.webp"
+    },
+    {
+      "query_id": "q-000059",
+      "expected_slug": "zmv-koktebel-madera-albilo-beloe-sladkoe-19",
+      "image_path": "eval_photo_059.webp"
+    },
+    {
+      "query_id": "q-000060",
+      "expected_slug": "sober-bash-kaberne-fran-krasnoe-suhoe-13",
+      "image_path": "eval_photo_060.webp"
+    },
+    {
+      "query_id": "q-000061",
+      "expected_slug": "abrau-dyurso-pino-nuar-krasnoe-suhoe-12",
+      "image_path": "eval_photo_061.webp"
+    },
+    {
+      "query_id": "q-000062",
+      "expected_slug": "chteau-le-grand-vostock-vostock-blanc-sovinon-blan-beloe-suhoe-135",
+      "image_path": "eval_photo_062.webp"
+    },
+    {
+      "query_id": "q-000063",
+      "expected_slug": "agora-shardone",
+      "image_path": "eval_photo_063.webp"
+    },
+    {
+      "query_id": "q-000064",
+      "expected_slug": "twopeters_saperavi",
+      "image_path": "eval_photo_064.webp"
+    },
+    {
+      "query_id": "q-000065",
+      "expected_slug": "fanagoriya-brule-cabernet-sauvignon-polusladkoe-krasnoe-kaberne-sovinon-125",
+      "image_path": "eval_photo_065.webp"
+    },
+    {
+      "query_id": "q-000066",
+      "expected_slug": "uva-vallis-risling",
+      "image_path": "eval_photo_066.webp"
+    },
+    {
+      "query_id": "q-000067",
+      "expected_slug": "vinodelnya-myshako-sesto-senso-yagodnyy-vzryv-merlo-rozovoe-suhoe-122",
+      "image_path": "eval_photo_067.webp"
+    },
+    {
+      "query_id": "q-000068",
+      "expected_slug": "wine",
+      "image_path": "eval_photo_068.webp"
+    },
+    {
+      "query_id": "q-000069",
+      "expected_slug": "chateau-andre-pino-nuar-roze-rozovoe-suhoe-13",
+      "image_path": "eval_photo_069.webp"
+    },
+    {
+      "query_id": "q-000070",
+      "expected_slug": "vinodelnya-vedernikov-sibirkovyy-beloe-suhoe-11",
+      "image_path": "eval_photo_070.webp"
+    },
+    {
+      "query_id": "q-000071",
+      "expected_slug": "bukovinka",
+      "image_path": "eval_photo_071.webp"
+    },
+    {
+      "query_id": "q-000072",
+      "expected_slug": "chateau-de-talu-uroki-frantsuzskogo-krasnostop-krasnostop-anapskiy-krasnoe-suhoe-145",
+      "image_path": "eval_photo_072.webp"
+    },
+    {
+      "query_id": "q-000073",
+      "expected_slug": "chateau-de-talu-blan-semilon-beloe-suhoe-127",
+      "image_path": "eval_photo_073.webp"
+    },
+    {
+      "query_id": "q-000074",
+      "expected_slug": "solnechnaya-dolina-chernyy-doktor-solnechnoy-doliny-ekim-kara-krasnoe-sladkoe-16",
+      "image_path": "eval_photo_074.webp"
+    },
+    {
+      "query_id": "q-000075",
+      "expected_slug": "skalistyy-bereg-dyhanie-voln-shardone-beloe-suhoe-121",
+      "image_path": "eval_photo_075.webp"
+    },
+    {
+      "query_id": "q-000076",
+      "expected_slug": "vinodelnya-uzunov-rash-rezerv-risling-reynskiy-beloe-suhoe-127",
+      "image_path": "eval_photo_076.webp"
+    },
+    {
+      "query_id": "q-000077",
+      "expected_slug": "usadba-markoth-shardone-beloe-suhoe-12",
+      "image_path": "eval_photo_077.webp"
+    },
+    {
+      "query_id": "q-000078",
+      "expected_slug": "vinodelnya-myshako-sovinon-blan-mode-cold-style-beloe-suhoe-122",
+      "image_path": "eval_photo_078.webp"
+    },
+    {
+      "query_id": "q-000079",
+      "expected_slug": "sober-bash-dve-doliny-saperavi-kachich-krasnoe-polusuhoe-15",
+      "image_path": "eval_photo_079.webp"
+    },
+    {
+      "query_id": "q-000080",
+      "expected_slug": "lorio-bryut-belyj",
+      "image_path": "eval_photo_080.webp"
+    },
+    {
+      "query_id": "q-000081",
+      "expected_slug": "miroir-de-talu-merlot-cabernet-sauvignon",
+      "image_path": "eval_photo_081.webp"
+    },
+    {
+      "query_id": "q-000082",
+      "expected_slug": "ballet-blanc",
+      "image_path": "eval_photo_082.webp"
+    },
+    {
+      "query_id": "q-000083",
+      "expected_slug": "alma-valley-solntse-vozduh-vinograd-shardone-beloe-polusuhoe-13",
+      "image_path": "eval_photo_083.webp"
+    },
+    {
+      "query_id": "q-000084",
+      "expected_slug": "oleg",
+      "image_path": "eval_photo_084.webp"
+    },
+    {
+      "query_id": "q-000085",
+      "expected_slug": "balaklava-muskat-beloe-polusladkoe",
+      "image_path": "eval_photo_085.webp"
+    },
+    {
+      "query_id": "q-000086",
+      "expected_slug": "chteau-le-grand-vostock-sauvignon-blanc-sovinon-blan-beloe-suhoe-14",
+      "image_path": "eval_photo_086.webp"
+    },
+    {
+      "query_id": "q-000087",
+      "expected_slug": "esse-rose-cuvee-prestige-pino-nuar-rozovoe-bryut-115",
+      "image_path": "eval_photo_087.webp"
+    },
+    {
+      "query_id": "q-000088",
+      "expected_slug": "kaberne-avtorskoe-vino",
+      "image_path": "eval_photo_088.webp"
+    },
+    {
+      "query_id": "q-000089",
+      "expected_slug": "fanagoriya-cru-lermont-rubinovyy-magaracha-krasnoe-suhoe-13",
+      "image_path": "eval_photo_089.webp"
+    },
+    {
+      "query_id": "q-000090",
+      "expected_slug": "soyuz-vino-lavetti-krasnoe-suhoe-krasnye-sorta-vinograda-11",
+      "image_path": "eval_photo_090.webp"
+    },
+    {
+      "query_id": "q-000091",
+      "expected_slug": "igristoe-zhemchuzhnoe-vino-polusuhoe-krasnoe-di-kaspiko-fiori-di-mare-di-caspico-fiori-di-mare",
+      "image_path": "eval_photo_091.webp"
+    },
+    {
+      "query_id": "q-000092",
+      "expected_slug": "czitronnyj-magaracha",
+      "image_path": "eval_photo_092.webp"
+    },
+    {
+      "query_id": "q-000093",
+      "expected_slug": "denisov_rubin_klaret_krasnaya_strelka",
+      "image_path": "eval_photo_093.webp"
+    },
+    {
+      "query_id": "q-000094",
+      "expected_slug": "chteau-le-grand-vostock-vostock-blanc-sovinon-blan-beloe-suhoe-135",
+      "image_path": "eval_photo_094.webp"
+    },
+    {
+      "query_id": "q-000095",
+      "expected_slug": "chteau-le-grand-vostock-cabernet-sauvignon-kaberne-sovinon-krasnoe-suhoe-14",
+      "image_path": "eval_photo_095.webp"
+    },
+    {
+      "query_id": "q-000096",
+      "expected_slug": "usadba-mezyb-shishka-kupazh-5-kaberne-sovinon-rozovoe-suhoe-133",
+      "image_path": "eval_photo_096.webp"
+    },
+    {
+      "query_id": "q-000097",
+      "expected_slug": "novyy-svet-dom-shampanskih-vin-novyy-svet-polusladkoe-roze-shardone-rozovoe-115",
+      "image_path": "eval_photo_097.webp"
+    },
+    {
+      "query_id": "q-000098",
+      "expected_slug": "uppa-winery-kokur-kokur-belyy-beloe-suhoe-12",
+      "image_path": "eval_photo_098.webp"
+    },
+    {
+      "query_id": "q-000099",
+      "expected_slug": "fanagoriya-100-ottenkov-krasnogo-saperavi-krasnoe-suhoe-14",
+      "image_path": "eval_photo_099.webp"
+    },
+    {
+      "query_id": "q-000100",
+      "expected_slug": "pozdnij-sbor-krasnoe",
+      "image_path": "eval_photo_100.webp"
+    }
+  ]
+}
