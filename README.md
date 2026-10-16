@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD033 -->
 # VINA: Сервис компьютерного зрения и распознавания винных этикеток
 
 <p align="center">
@@ -38,75 +39,57 @@
 ## 🧠 Ключевые архитектурные решения
 
 1. **Иерархическая сегментация бутылки и этикетки (Stage 1)**
-   - Дообученная модель `YOLOv8x-seg` (`models/best_v2_100bottles.pt`).
-   - Функция выбора центральной бутылки с квадратичным штрафом за удаление от оптической оси кадра $W_{\text{centrality}} = (1 - \Delta x)^2$.
-   - Сохранение и вертикальная сшивка основной этикетки и соосных дополнительных шильдиков/кольереток.
+   * Дообученная модель `YOLOv8x-seg` (`models/best_v2_100bottles.pt`).
+   * Функция выбора центральной бутылки с квадратичным штрафом за удаление от оптической оси кадра $W_{\text{centrality}} = (1 - \Delta x)^2$.
+   * Сохранение и вертикальная сшивка основной этикетки и соосных дополнительных шильдиков/кольереток.
 
 2. **Цилиндрический деварпинг (Cylindrical Dewarping Stages 2–4)**
-   - Векторизация физического контура этикетки, детектирование 4 углов и боковых образующих цилиндра.
-   - Трансфинитная интерполяция кривизны (Coon's Patch) и ресемплинг через Thin Plate Spline (TPS) с фильтром Lanczos-4.
+   * Векторизация физического контура этикетки, детектирование 4 углов и боковых образующих цилиндра.
+   * Трансфинитная интерполяция кривизны (Coon's Patch) и ресемплинг через Thin Plate Spline (TPS) с фильтром Lanczos-4.
 
 3. **Двухвекторный мультимодальный поиск (SigLIP 2 + DINOv2-LoRA)**
-   - **SigLIP 2** (`ViT-B-16-SigLIP2-384`): извлекает глобальные семантические признаки всей композиции бутылки.
-   - **DINOv2-small + LoRA** (`dinov2_lora_all_wines`): тонкоструктурные текстурные признаки кропа этикетки, обученные различать одинаковые линейки одного производителя.
+   * **SigLIP 2** (`ViT-B-16-SigLIP2-384`): извлекает глобальные семантические признаки всей композиции бутылки.
+   * **DINOv2-small + LoRA** (`dinov2_lora_all_wines`): тонкоструктурные текстурные признаки кропа этикетки, обученные различать одинаковые линейки одного производителя.
 
 4. **Гибридный калиброванный ранкинг (HybridRanker v2)**
-   - Построение пула кандидатов Top-3 SigLIP + Top-3 DINO + расширение кластером «сестринских вин» линейки.
-   - Формула доверия:
+   * Построение пула кандидатов Top-3 SigLIP + Top-3 DINO + расширение кластером «сестринских вин» линейки.
+   * Формула доверия:
      $$IF = N + IB \cdot (A + C + D + F)$$
-     - $N$ — калиброванная визуальная уверенность эмбеддингов (0..100%).
-     - $IB$ — масштабный коэффициент значимости OCR-бонуса.
-     - $A$ (Артикул / Название), $C$ (Сорт винограда / Тезаурус), $D$ (Цвет / Сахар), $F$ (Тонкие маркеры линейки).
-   - Поддержка цветовых микро-патчей (выделение шильдиков купажей, например, «Фантом 30/70», «50/50», «70/30»).
+     * $N$ — калиброванная визуальная уверенность эмбеддингов (0..100%).
+     * $IB$ — масштабный коэффициент значимости OCR-бонуса.
+     * $A$ (Артикул / Название), $C$ (Сорт винограда / Тезаурус), $D$ (Цвет / Сахар), $F$ (Тонкие маркеры линейки).
+   * Поддержка цветовых микро-патчей (выделение шильдиков купажей, например, «Фантом 30/70», «50/50», «70/30»).
 
-5. **Мультиязычный винный тезаурус (`pipeline/wine_thesaurus.py`)**
-   - Нормализация диакритики (NFKD: *Rosé* $\to$ *Rose*).
-   - Онтология сортов на 6 языках (русский, английский, французский, итальянский, немецкий, испанский).
-
-6. **Двухуровневый OCR/VLM**
-   - Быстрый первичный OCR через `RapidOCR` + `EasyOCR`.
-   - VLM-фоллбэк на `Qwen2-VL-2B-Instruct` для нестандартных каллиграфических шрифтов, тиснения фольгой и дореволюционной стилистики.
+5. **Оркестратор VINA Studio Matcher и Sommelier**
+   * Векторный индекс FAISS (2 103 эталона каталога, 4 111 ракурсов).
+   * Интерактивный винный сомелье на базе локальной LLM/NLP с рекомендациями по гастрономии и винным вкусам.
 
 ---
 
-## 📁 Структура репозитория
+## 📂 Структура проекта
 
 ```text
-d:\VINA\
-├── app.py                     # Основной сервер FastAPI (эндпоинты /v1/eval/predict, /api/health)
-├── Dockerfile                 # Продакшн Docker-образ на базе PyTorch CUDA 12.1
-├── docker-compose.yml         # Манифест Docker Compose с пробросом GPU
-├── .dockerignore              # Исключение тяжелых датасетов и мусора из сборки
-├── requirements.txt           # Зафиксированные Python-зависимости
-├── wines_integrated_clean.csv # Чистый нормализованный каталог вин (2 103 позиции)
-├── start_app.bat              # Скрипт быстрого запуска под Windows
-├── test_vina_scanner.py       # Официальный валидационный benchmark-скрипт
-│
-├── pipeline/                  # Ядро алгоритмов компьютерного зрения
-│   ├── stage1_preprocessing.py # YOLOv8-seg, выбор доминантной бутылки, MSRCR
-│   ├── dewarp_engine.py       # Пайплайн цилиндрического выпрямления (TPS + Coon's Patch)
-│   ├── search_engine.py       # Поисковый движок SigLIP 2 + FAISS
-│   ├── dino_engine.py         # Поисковый движок DINOv2-small + LoRA
-│   ├── hybrid_ranker.py       # Калиброванный гибридный ранкинг по формуле IF
-│   ├── wine_thesaurus.py      # Мультиязычная онтология вин, сортов и синонимов
-│   ├── stage5_ocr.py          # Двухконтурный OCR (RapidOCR + EasyOCR + VLM fallback)
-│   ├── stage5_vlm.py          # Модуль Qwen2-VL-2B-Instruct
-│   ├── sam_refiner.py         # Субпиксельное уточнение масок (SAM ViT-H)
-│   └── catalog.py             # Загрузчик каталога и метаданных
-│
-├── models/                    # Веса моделей и FAISS-индексы
-│   ├── best_v2_100bottles.pt  # Веса YOLOv8x-seg (22.8 MB)
-│   ├── siglip2_index.faiss    # FAISS индекс SigLIP 2 (12.0 MB)
-│   ├── siglip2_index_meta.pkl # Метаданные индекса SigLIP 2
-│   ├── dino_all_wines_index.faiss     # FAISS индекс DINOv2 (3.0 MB)
-│   ├── dino_all_wines_index_meta.pkl  # Метаданные индекса DINOv2
-│   └── dinov2_lora_all_wines/ # LoRA адаптер DINOv2 (safetensors 2.26 MB)
-│
-└── static/                    # PWA Веб-интерфейс мобильного сканера
-    ├── scanner.html           # Мобильный сканер этикеток
-    ├── index.html             # Студия анализа цилиндрической развертки
-    ├── scanner.js / app.js
-    └── scanner.css / style.css
+VINA/
+├── app.py                      # FastAPI сервер (REST API, WebSocket, Swagger)
+├── bridge_tunnel.py            # Облачный мост Cloudflare Tunnel с автокопированием URL
+├── start_app.bat               # Быстрый запуск сервера на локальном GPU (RTX 3090)
+├── start_tunnel.bat            # Запуск безопасного публичного HTTPS-туннеля
+├── запустить_тест_1.bat        # Прогон 1 (27 каталожных фото)
+├── запустить_тест_2.bat        # Прогон 2 (25 сложных полевых фото)
+├── запустить_тест_eval.bat     # Финальный прогон Eval (100 бутылок конкурса)
+├── test_vina_scanner.py        # Официальный кроссплатформенный раннер тестов
+├── pipeline/                   # Модули алгоритмов компьютерного зрения
+│   ├── dewarp_engine.py        # Полный конвейер цилиндрической развертки
+│   ├── dino_engine.py          # DINOv2-LoRA экстрактор признаков
+│   ├── hybrid_ranker.py        # Калиброванное слияние и формула бонусов
+│   ├── search_engine.py        # SigLIP 2 + FAISS поисковый движок
+│   └── vina_studio_matcher.py  # Студийный каскадный матчер
+├── sommelier/                  # Модуль рекомендательного ассистента сомелье
+├── static/                     # Веб-интерфейс мобильного сканера (PWA, HTML/CSS/JS)
+├── models/                     # Обученные веса нейросетей и индексы FAISS
+├── experiments/                # Исторические исследования, скрипты и отчеты
+├── Dockerfile                  # Production Docker образ с CUDA 12.1
+└── docker-compose.yml          # Оркестрация контейнеров
 ```
 
 ---
@@ -118,27 +101,33 @@ d:\VINA\
 Контейнер уже настроен для работы с видеокартами NVIDIA (через NVIDIA Container Toolkit) и содержит все системные библиотеки (OpenCV, FAISS OpenMP, cuDNN).
 
 #### 1. Предварительные требования
-- Установленный [Docker](https://docs.docker.com/engine/install/) и [Docker Compose](https://docs.docker.com/compose/).
-- Для аппаратного ускорения: [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
+
+* Установленный [Docker](https://docs.docker.com/engine/install/) и [Docker Compose](https://docs.docker.com/compose/).
+* Для аппаратного ускорения: [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
 
 #### 2. Запуск контейнера
+
 В корневой папке проекта выполните:
+
 ```bash
 docker compose up -d --build
 ```
 
 #### 3. Проверка статуса
+
 ```bash
 docker compose ps
 curl http://localhost:8080/api/health
 ```
 
 Логи сервиса:
+
 ```bash
 docker compose logs -f vina-scanner
 ```
 
 Остановка:
+
 ```bash
 docker compose down
 ```
@@ -148,37 +137,47 @@ docker compose down
 ### Способ 2: Локальная установка (Bare-metal: Windows / Linux)
 
 #### 1. Требования к окружению
-- **Python:** 3.10 или 3.11
-- **GPU (желательно):** NVIDIA RTX 3060 / 3090 / 4090 / A100 (CUDA 12.1+)
-- **CPU Fallback:** Поддерживается автоматический переход на CPU, если GPU отсутствует.
+
+* **Python:** 3.10 или 3.11
+* **GPU (желательно):** NVIDIA RTX 3060 / 3090 / 4090 / A100 (CUDA 12.1+)
+* **CPU Fallback:** Поддерживается автоматический переход на CPU, если GPU отсутствует.
 
 #### 2. Создание виртуального окружения
+
 **Windows (PowerShell):**
+
 ```powershell
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 ```
 
 **Linux / macOS:**
+
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 ```
 
 #### 3. Установка PyTorch с поддержкой CUDA
+
 Рекомендуется сначала установить PyTorch под вашу версию CUDA (например, CUDA 12.1):
+
 ```bash
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 ```
 
 #### 4. Установка зависимостей проекта
+
 ```bash
 pip install -r requirements.txt
 ```
 
 #### 5. Запуск сервера
+
 **Под Windows:**
+
 Дважды кликните по `start_app.bat` или выполните:
+
 ```bash
 python app.py
 ```
@@ -190,6 +189,7 @@ python app.py
 ## 📡 API Спецификация
 
 ### 1. Официальный метод распознавания (SLA < 3 сек)
+
 Используется жюри и тестовыми скриптами для оценки качества.
 
 * **URL:** `POST /v1/eval/predict`
@@ -197,11 +197,13 @@ python app.py
 * **Параметры:** `image` (файл изображения JPG/PNG/WebP)
 
 **Пример запроса через curl:**
+
 ```bash
 curl -X POST -F "image=@bottle_sample.jpg" http://127.0.0.1:8080/v1/eval/predict
 ```
 
 **Пример ответа (вино найдено в каталоге):**
+
 ```json
 {
   "slug": "golubitskoe-estate-rose-rozovoe-suhoe-125",
@@ -218,6 +220,7 @@ curl -X POST -F "image=@bottle_sample.jpg" http://127.0.0.1:8080/v1/eval/predict
 ```
 
 **Пример ответа (вино отсутствует в каталоге):**
+
 ```json
 {
   "slug": null,
@@ -232,9 +235,11 @@ curl -X POST -F "image=@bottle_sample.jpg" http://127.0.0.1:8080/v1/eval/predict
 ---
 
 ### 2. Проверка состояния системы (Healthcheck)
+
 * **URL:** `GET /api/health`
 
 **Пример ответа:**
+
 ```json
 {
   "status": "healthy",
@@ -252,10 +257,13 @@ curl -X POST -F "image=@bottle_sample.jpg" http://127.0.0.1:8080/v1/eval/predict
 ---
 
 ### 3. Мобильный сканер (PWA UI)
+
 Откройте в браузере мобильного устройства или десктопа:
+
 ```text
 http://<IP_СЕРВЕРА>:8080/scanner
 ```
+
 Интерфейс поддерживает доступ к камере смартфона в реальном времени, мгновенный кроп этикетки, анимацию развертки и отображение карточки вина с характеристиками (сорт, сладость, цвет, регион, гастрономические пары).
 
 ---
@@ -264,22 +272,28 @@ http://<IP_СЕРВЕРА>:8080/scanner
 
 Для запуска полного цикла тестирования используется скрипт `test_vina_scanner.py`.
 
-### Тест 1 (Каталожные вина, 27 бутылок):
+### Тест 1 (Каталожные вина, 27 бутылок)
+
 ```bash
-python test_vina_scanner.py --eval-root owner_eval --run 1 --mode http
+python test_vina_scanner.py --run 1 --mode http
 ```
+
 *Результат: 27/27 (100.0%) OK.*
 
-### Тест 2 (Полевые фото, 25 бутылок):
+### Тест 2 (Полевые фото, 25 бутылок)
+
 ```bash
-python test_vina_scanner.py --eval-root owner_eval --run 2 --mode http
+python test_vina_scanner.py --run 2 --mode http
 ```
+
 *Результат: 25/25 (100.0%) OK.*
 
-### Финальный пакет (100 бутылок):
+### Финальный пакет (100 бутылок)
+
 ```bash
-python test_vina_scanner.py --eval-root D:\Eval --mode http
+python test_vina_scanner.py --run eval --mode http
 ```
+
 *Результат: 95/100 (95.0%) OK (с сохранением файла ответов `predictions.jsonl`).*
 
 ---

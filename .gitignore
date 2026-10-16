@@ -58,14 +58,19 @@ agora-yachting-cabernet-sauvignon.png
 "Оценка полные бокалы.png"
 "Поставь оценку.png"
 
-# Shell/Bat scripts in root (except start_app.bat)
+# Shell/Bat scripts in root
 *.bat
 !start_app.bat
+!start_tunnel.bat
+!запустить_тест_1.bat
+!запустить_тест_2.bat
+!запустить_тест_eval.bat
 
-# Heavy datasets and media dumps
+# Heavy datasets, experiments and media dumps
+experiments/
 media/
 wines_images_clean/
-# owner_eval/ is tracked in eval-benchmarks branch
+# owner_eval/ and eval/ are tracked in eval-benchmarks branch
 test_dataset/
 ready_dataset/
 roboflow_bottle_labels/
@@ -74,6 +79,11 @@ dataset_for_yolo/
 output_dataset/
 TZ/**/prod-svoe-vino-strapi/
 TZ/**/__MACOSX/
+eval_results/
+inferences/
+outputs/
+metrics/
+debug_masks/
 *.zip
 *.rar
 *.7z

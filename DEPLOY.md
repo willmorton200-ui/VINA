@@ -11,12 +11,15 @@
 ### Шаг 1. Подготовка сервера с GPU NVIDIA
 
 1. Убедитесь, что установлены драйверы NVIDIA:
+
    ```bash
    nvidia-smi
    ```
+
    *(Команда должна показывать модель видеокарты и версию драйвера).*
 
 2. Установите Docker (если не установлен):
+
    ```bash
    curl -fsSL https://get.docker.com -o get-docker.sh
    sudo sh get-docker.sh
@@ -25,6 +28,7 @@
    ```
 
 3. Установите **NVIDIA Container Toolkit** (для доступа Docker к GPU):
+
    ```bash
    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
      && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
@@ -39,6 +43,7 @@
    ```
 
 4. Проверьте доступность GPU в Docker:
+
    ```bash
    docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi
    ```
@@ -57,27 +62,40 @@ cd VINA
 ### Шаг 3. Запуск контейнера
 
 Запустите контейнер в фоновом режиме через Docker Compose:
+
 ```bash
 docker compose up -d --build
 ```
 
-Docker соберет образ, установит системные зависимости OpenCV/FAISS и запустит сервис на порту **8080**.
+Docker соберет образ, автоматически подтянет все зависимости и веса моделей (включая Qwen2-VL-2B-Instruct напрямую в `models/`) и запустит сервис на порту **8080**.
+
+> **Совет для коллег (без Docker / локально):**
+> Для предварительной загрузки всех весов одной командой можно запустить:
+> ```bash
+> python scripts/download_models.py
+> ```
+> Скрипт проверит наличие моделей и скачает недостающие напрямую с Hugging Face (с поддержкой зеркала hf-mirror.com).
 
 ---
 
 ### Шаг 4. Проверка работоспособности
 
 1. Проверьте статус контейнера и healthcheck:
+
    ```bash
    docker compose ps
    ```
+
    *(Статус должен стать `Up ... (healthy)`).*
 
 2. Выполните запрос к эндпоинту состояния:
+
    ```bash
    curl http://localhost:8080/api/health
    ```
+
    Пример успешного ответа:
+
    ```json
    {
      "status": "healthy",
@@ -92,6 +110,7 @@ Docker соберет образ, установит системные зави
    ```
 
 3. Тестовый запрос на инференс этикетки:
+
    ```bash
    curl -X POST -F "image=@/path/to/bottle.jpg" http://localhost:8080/v1/eval/predict
    ```
@@ -101,14 +120,19 @@ Docker соберет образ, установит системные зави
 ### Полезные команды управления контейнером
 
 * **Просмотр логов в реальном времени:**
+
   ```bash
   docker compose logs -f vina-scanner
   ```
+
 * **Перезапуск сервиса:**
+
   ```bash
   docker compose restart
   ```
+
 * **Остановка контейнера:**
+
   ```bash
   docker compose down
   ```
@@ -120,6 +144,7 @@ Docker соберет образ, установит системные зави
 Используйте этот вариант, если на сервере нет Docker или требуется запуск напрямую через systemd-сервис.
 
 ### 1. Установка системных библиотек
+
 ```bash
 sudo apt-get update && sudo apt-get install -y \
     python3-pip \
@@ -132,6 +157,7 @@ sudo apt-get update && sudo apt-get install -y \
 ```
 
 ### 2. Клонирование и создание venv
+
 ```bash
 git clone https://github.com/willmorton200-ui/VINA.git
 cd VINA
@@ -141,6 +167,7 @@ source venv/bin/activate
 ```
 
 ### 3. Установка PyTorch и библиотек
+
 ```bash
 pip install --upgrade pip
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
@@ -148,7 +175,9 @@ pip install -r requirements.txt
 ```
 
 ### 4. Создание systemd-сервиса (Автозапуск)
+
 Создайте файл `/etc/systemd/system/vina.service`:
+
 ```ini
 [Unit]
 Description=VINA Wine Scanner API Service
@@ -169,6 +198,7 @@ WantedBy=multi-user.target
 ```
 
 Активируйте и запустите службу:
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable vina
@@ -183,11 +213,12 @@ sudo systemctl status vina
 Для разработчиков и локального тестирования под Windows:
 
 1. Убедитесь, что установлены:
-   - Python 3.10 или 3.11 ([python.org](https://www.python.org/downloads/))
-   - Git for Windows ([git-scm.com](https://git-scm.com/))
-   - NVIDIA Driver с поддержкой CUDA 12.1+
+   * Python 3.10 или 3.11 ([python.org](https://www.python.org/downloads/))
+   * Git for Windows ([git-scm.com](https://git-scm.com/))
+   * NVIDIA Driver с поддержкой CUDA 12.1+
 
 2. Откройте PowerShell в папке проекта:
+
    ```powershell
    python -m venv venv
    .\venv\Scripts\Activate.ps1
@@ -197,9 +228,11 @@ sudo systemctl status vina
 
 3. Запуск:
    Дважды кликните по файлу **`start_app.bat`** или выполните в консоли:
+
    ```powershell
    python app.py
    ```
+
    Сервер запустится на `http://127.0.0.1:8080` и автоматически откроет сканер в браузере.
 
 ---
@@ -207,12 +240,15 @@ sudo systemctl status vina
 ## Часто задаваемые вопросы (Траблшутинг)
 
 ### 1. `CUDA out of memory`
+
 * Пайплайн оптимизирован для работы в ~4-6 ГБ VRAM (SigLIP2 + DINOv2-LoRA + YOLOv8x).
 * Если видеокарта имеет менее 8 ГБ VRAM, отключите параллельную загрузку фолбэка Qwen2-VL или перенаправьте VLM на CPU.
 
 ### 2. Порт 8080 уже занят
+
 * В файле `docker-compose.yml` измените проброс портов, например `"8081:8080"`.
 * Либо при запуске uvicorn укажите флаг `--port 8081`.
 
 ### 3. Сервер запустился, но возвращает ошибку `Image not found`
+
 * База вин (`wines_integrated_clean.csv`) содержит полную текстовую семантику 2103 вин. Если физические фото вин из интернет-магазина не были смонтированы в `wines_images_clean/`, поиск все равно работает штатно по векторным эмбеддингам и OCR. Картинки оригиналов из каталога подтягиваются автоматически при их наличии.
