@@ -129,6 +129,7 @@ def run_http_eval(queries, images_dir: Path, endpoint: str, output_path: Path, m
 
 
 def run_direct_eval(queries, images_dir: Path, output_path: Path, mapping: dict):
+    import cv2
     print("\n[DIRECT РЕЖИМ] Инициализация VINA Studio (SigLIP2 + DINOv2-LoRA + Dewarp OCR + Тезаурус)...")
     sys.path.insert(0, str(Path(__file__).parent))
     from pipeline.catalog import WineCatalog
