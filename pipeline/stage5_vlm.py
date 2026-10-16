@@ -18,26 +18,67 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 LOCAL_VLM_PATH = BASE_DIR / "models" / "Qwen2-VL-2B-Instruct"
-WIN_VLM_PATH = Path(r"D:\models\Qwen2-VL-2B-Instruct")
 
-if LOCAL_VLM_PATH.exists():
-    DEFAULT_VLM_PATH = str(LOCAL_VLM_PATH)
-elif WIN_VLM_PATH.exists():
-    DEFAULT_VLM_PATH = str(WIN_VLM_PATH)
-else:
-    DEFAULT_VLM_PATH = "Qwen/Qwen2-VL-2B-Instruct"
+def ensure_vlm_model(target_dir: Path = LOCAL_VLM_PATH) -> str:
+    """
+    Проверяет наличие весов Qwen2-VL-2B-Instruct внутри VINA/models/.
+    Если они отсутствуют (например, чистый клон репозитория у коллег или Docker) —
+    автоматически скачивает их напрямую с Hugging Face в папку models/Qwen2-VL-2B-Instruct.
+    """
+    if target_dir.exists() and (any(target_dir.glob("*.safetensors")) or any(target_dir.glob("*.bin"))):
+        return str(target_dir)
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    repo_id = "Qwen/Qwen2-VL-2B-Instruct"
+    token = os.environ.get("HF_TOKEN", None)
+
+    print(f"[WineVLMDecoder] Модель {repo_id} не найдена в {target_dir}.")
+    print(f"[WineVLMDecoder] Запуск автоматической загрузки весов с Hugging Face в {target_dir}...")
+    try:
+        from huggingface_hub import snapshot_download
+        snapshot_download(
+            repo_id=repo_id,
+            local_dir=str(target_dir),
+            local_dir_use_symlinks=False,
+            token=token,
+        )
+        print(f"[WineVLMDecoder] Веса {repo_id} успешно скачаны в {target_dir}.")
+        return str(target_dir)
+    except Exception as e_direct:
+        print(f"[WineVLMDecoder] Прямая загрузка с HF завершилась с ошибкой: {e_direct}")
+        print(f"[WineVLMDecoder] Пробуем резервное зеркало https://hf-mirror.com ...")
+        try:
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id=repo_id,
+                local_dir=str(target_dir),
+                local_dir_use_symlinks=False,
+                token=token,
+                endpoint="https://hf-mirror.com",
+            )
+            print(f"[WineVLMDecoder] Веса {repo_id} успешно скачаны через зеркало в {target_dir}.")
+            return str(target_dir)
+        except Exception as e_mirror:
+            print(f"[WineVLMDecoder] Ошибка скачивания в models: {e_mirror}. Фолбэк на transformers cache.")
+            return repo_id
+
+DEFAULT_VLM_PATH = str(LOCAL_VLM_PATH)
 
 class WineVLMDecoder:
     _instance = None
 
     @classmethod
-    def get_instance(cls, model_path: str = DEFAULT_VLM_PATH, device: str = "cuda"):
+    def get_instance(cls, model_path: str = None, device: str = "cuda"):
         """Returns the shared singleton instance of WineVLMDecoder (avoids duplicate VRAM allocation)."""
         if cls._instance is None:
+            if model_path is None:
+                model_path = ensure_vlm_model(LOCAL_VLM_PATH)
             cls._instance = cls(model_path=model_path, device=device, lazy=False)
         return cls._instance
 
-    def __init__(self, model_path: str = DEFAULT_VLM_PATH, device: str = "cuda", lazy: bool = True):
+    def __init__(self, model_path: str = None, device: str = "cuda", lazy: bool = True):
+        if model_path is None:
+            model_path = ensure_vlm_model(LOCAL_VLM_PATH)
         self.model_path = model_path
         self.device = device if torch.cuda.is_available() else "cpu"
         self.model = None
