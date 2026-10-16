@@ -12,6 +12,8 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - VINA_MATCHER_MODE=hybrid
+    volumes:
+      - ./models:/app/models
     deploy:
       resources:
         reservations:
