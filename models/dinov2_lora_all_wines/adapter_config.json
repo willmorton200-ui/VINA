@@ -6,7 +6,7 @@
     "base_model_class": "Dinov2Model",
     "parent_library": "transformers.models.dinov2.modeling_dinov2"
   },
-  "base_model_name_or_path": "D:\\VINA2\\lct2026prod\\models\\dinov2-small",
+  "base_model_name_or_path": "facebook/dinov2-small",
   "bias": "none",
   "corda_config": null,
   "ensure_weight_tying": false,

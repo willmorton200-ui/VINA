@@ -25,10 +25,12 @@ class WineSearchEngine:
         
         print(f"[SearchEngine] Загрузка модели {self.model_name} на {self.device}...")
         t0 = time.time()
+        cache_models_dir = str(Path(__file__).resolve().parent.parent / "models")
         self.model, _, self.preprocess = open_clip.create_model_and_transforms(
             self.model_name, 
             pretrained=self.pretrained, 
-            device=self.device
+            device=self.device,
+            cache_dir=cache_models_dir
         )
         self.model.eval()
         print(f"[SearchEngine] Модель загружена за {time.time()-t0:.1f}с")
