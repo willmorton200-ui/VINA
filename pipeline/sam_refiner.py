@@ -14,7 +14,10 @@ import torch
 
 logger = logging.getLogger("vina.sam_refiner")
 
-MODELS_DIR = Path(r"D:\models")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+MODELS_DIR = PROJECT_ROOT / "models"
+if not (MODELS_DIR / "sam_vit_h_4b8939.pth").exists() and Path(r"D:\models").exists():
+    MODELS_DIR = Path(r"D:\models")
 
 class SAMRefiner:
     """

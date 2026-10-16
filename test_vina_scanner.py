@@ -268,19 +268,19 @@ def main():
             pack_dir = args.eval_root
     elif str(args.run).lower() in ("eval", "100"):
         candidates = [
-            repo_root / "experiments" / "eval_tools" / "eval",
             repo_root / "eval",
+            repo_root / "experiments" / "eval_tools" / "eval",
             Path(r"D:\Eval")
         ]
         for c in candidates:
-            if c.exists() and (c / "mapping.json").exists():
+            if c.exists() and (c / "mapping.json").exists() and (c / "queries").exists():
                 pack_dir = c
                 break
     else:
         # Прогоны 1, 2, 119 и т.д. (owner_eval)
         candidates = [
-            repo_root / "experiments" / "eval_tools" / "owner_eval" / args.run,
             repo_root / "owner_eval" / args.run,
+            repo_root / "experiments" / "eval_tools" / "owner_eval" / args.run,
             Path(r"D:\VINA\owner_eval") / args.run,
         ]
         for c in candidates:
@@ -358,7 +358,9 @@ def main():
     print(f"• Файл ответов    : {output_path}")
     print(f"• Всего запросов  : {total}")
     print(f"• Точность Hit@1  : {correct}/{total} ({pct:.1f}%)")
-    print(f"• Время отклика   : среднее {avg_lat:.0f} ms (мин: {min(latencies)} ms, макс: {max(latencies)} ms)")
+    min_lat = min(latencies) if latencies else 0
+    max_lat = max(latencies) if latencies else 0
+    print(f"• Время отклика   : среднее {avg_lat:.0f} ms (мин: {min_lat} ms, макс: {max_lat} ms)")
     print(f"• Общее время     : {total_time:.1f} с")
     print("=" * 80 + "\n")
 

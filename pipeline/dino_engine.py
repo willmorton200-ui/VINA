@@ -16,15 +16,12 @@ from PIL import Image
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODELS_DIR = BASE_DIR / "models"
-VINA2_MODELS = Path(r"D:\VINA2\lct2026prod\models")
 
 NEW_TRAINED_LORA = MODELS_DIR / "dinov2_lora_all_wines"
-DINO_LORA_PATH = NEW_TRAINED_LORA if NEW_TRAINED_LORA.exists() else (VINA2_MODELS / "dinov2_label_finetuned")
+DINO_LORA_PATH = NEW_TRAINED_LORA
 
 if (MODELS_DIR / "dinov2-small").exists():
     DINO_BASE_PATH = MODELS_DIR / "dinov2-small"
-elif VINA2_MODELS.exists() and (VINA2_MODELS / "dinov2-small").exists():
-    DINO_BASE_PATH = VINA2_MODELS / "dinov2-small"
 else:
     DINO_BASE_PATH = "facebook/dinov2-small"
 
@@ -42,6 +39,13 @@ class DinoLabelEngine:
         is_local = os.path.exists(proc_path)
         self.processor = AutoImageProcessor.from_pretrained(proc_path, local_files_only=is_local, use_fast=False)
         base = AutoModel.from_pretrained(proc_path, local_files_only=is_local)
+        if not is_local:
+            try:
+                (MODELS_DIR / "dinov2-small").mkdir(parents=True, exist_ok=True)
+                self.processor.save_pretrained(MODELS_DIR / "dinov2-small")
+                base.save_pretrained(MODELS_DIR / "dinov2-small")
+            except Exception:
+                pass
         if DINO_LORA_PATH.exists() and ((DINO_LORA_PATH / "adapter_model.bin").exists() or (DINO_LORA_PATH / "adapter_config.json").exists() or (DINO_LORA_PATH / "adapter_model.safetensors").exists()):
             from peft import PeftModel
             try:
