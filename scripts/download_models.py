@@ -57,8 +57,43 @@ def download_qwen2_vl():
             print(f" [!] Ошибка скачивания Qwen2-VL: {e_mirror}")
             return False
 
+def download_dinov2_small():
+    target_dir = MODELS_DIR / "dinov2-small"
+    print(f"\n[2/3] Проверка модели dinov2-small в {target_dir}...")
+    if target_dir.exists() and (any(target_dir.glob("*.bin")) or any(target_dir.glob("*.safetensors"))):
+        print(f" -> dinov2-small уже установлена локально. Пропуск.")
+        return True
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    repo_id = "facebook/dinov2-small"
+    print(f" -> Модель не найдена. Начинаем загрузку с Hugging Face ({repo_id})...")
+    try:
+        from huggingface_hub import snapshot_download
+        snapshot_download(
+            repo_id=repo_id,
+            local_dir=str(target_dir),
+            local_dir_use_symlinks=False,
+        )
+        print(f" -> Успешно скачано в {target_dir}")
+        return True
+    except Exception as e_direct:
+        print(f" -> Прямая загрузка не удалась ({e_direct}). Пробуем через зеркало hf-mirror.com...")
+        try:
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id=repo_id,
+                local_dir=str(target_dir),
+                local_dir_use_symlinks=False,
+                endpoint="https://hf-mirror.com",
+            )
+            print(f" -> Успешно скачано через зеркало в {target_dir}")
+            return True
+        except Exception as e_mirror:
+            print(f" [!] Ошибка скачивания dinov2-small: {e_mirror}")
+            return False
+
 def check_local_models():
-    print(f"\n[2/2] Проверка встроенных моделей в {MODELS_DIR}...")
+    print(f"\n[3/3] Проверка встроенных моделей и индексов в {MODELS_DIR}...")
     required = [
         ("best_v2_100bottles.pt", "YOLOv8x-seg детекция бутылок и этикеток"),
         ("dinov2-small", "DINOv2 backbone"),
@@ -81,9 +116,10 @@ if __name__ == "__main__":
     print("VINA SCANNER: Автоматическая подготовка моделей")
     print("=" * 70)
     ok_qwen = download_qwen2_vl()
+    ok_dino = download_dinov2_small()
     ok_local = check_local_models()
     print("=" * 70)
-    if ok_qwen and ok_local:
+    if ok_qwen and ok_dino and ok_local:
         print("[ГОТОВО] Все модели на месте и готовы к работе.")
     else:
         print("[ВНИМАНИЕ] Некоторые модели отсутствуют, проверьте лог выше.")
