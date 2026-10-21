@@ -68,18 +68,61 @@ class WineCatalog:
                 photo_name = row[10].strip() if len(row) > 10 and row[10].strip() else (row[8].strip() if len(row) > 8 else "")
                 # Путь к картинке в новой папке
                 image_path = os.path.join(self.new_images_dir, photo_name) if photo_name else ""
+                if image_path and not os.path.isfile(image_path):
+                    stem, _ = os.path.splitext(image_path)
+                    for alt_ext in [".webp", ".jpg", ".png", ".jpeg"]:
+                        if os.path.isfile(stem + alt_ext):
+                            image_path = stem + alt_ext
+                            photo_name = os.path.basename(image_path)
+                            break
                 
+                # Поле sweetness используется в HybridRanker (строго по ключам SWEETNESS_ONTOLOGY / слагам)
                 sweetness = ""
-                if "-polusuhoe" in slug: sweetness = "полусухое"
-                elif "-suhoe" in slug: sweetness = "сухое"
-                elif "-polusladkoe" in slug: sweetness = "полусладкое"
-                elif "-sladkoe" in slug: sweetness = "сладкое"
-                elif "-desertnoe" in slug: sweetness = "десертное"
-                
+                if "-polusuhoe" in slug:
+                    sweetness = "полусухое"
+                elif "-suhoe" in slug:
+                    sweetness = "сухое"
+                elif "-polusladkoe" in slug:
+                    sweetness = "полусладкое"
+                elif "-sladkoe" in slug:
+                    sweetness = "сладкое"
+                elif "-desertnoe" in slug:
+                    sweetness = "десертное"
+
+                # Поле sugar используется только для отображения и фильтрации в UI-каталоге (/api/v2/catalog)
+                title_cat = f"{row[0].lower()} {row[1].lower()}"
+                sugar = sweetness
+                if not sugar:
+                    if "-bryut" in slug or "bryut" in slug.lower() or "брют" in title_cat or "brut" in title_cat:
+                        sugar = "брют"
+                    elif "полусух" in title_cat or "semi-dry" in title_cat:
+                        sugar = "полусухое"
+                    elif "полуслад" in title_cat or "semi-sweet" in title_cat:
+                        sugar = "полусладкое"
+                    elif "десерт" in title_cat or "ликерн" in title_cat:
+                        sugar = "десертное"
+                    elif "сладк" in title_cat:
+                        sugar = "сладкое"
+                    elif "сух" in title_cat:
+                        sugar = "сухое"
+
+                alcohol = ""
+                alc_match = re.search(r"-(\d{2,3})$", slug)
+                if alc_match:
+                    val = alc_match.group(1)
+                    alcohol = f"{val[:2]}.{val[2]}%" if len(val) == 3 else f"{val}%"
+                if not alcohol:
+                    alcohol = "16.0%" if ("портвейн" in slug or "мадера" in slug or "ликер" in row[1].lower()) else "13.0%"
+
+                remote_image_url = row[13].strip() if len(row) > 13 else ""
+                page_url = row[9].strip() if len(row) > 9 else ""
+                xml_photo = row[12].strip() if len(row) > 12 else ""
+
                 self.wines_by_slug[slug] = {
                     "name": row[0].strip(),
                     "category": row[1].strip(),
                     "sweetness": sweetness,
+                    "sugar": sugar,
                     "color": row[2].strip(),
                     "region": row[3].strip(),
                     "grape": row[4].strip(),
@@ -88,6 +131,11 @@ class WineCatalog:
                     "slug": slug,
                     "photo_name": photo_name,
                     "image_path": image_path if os.path.isfile(image_path) else "",
+                    "remote_image_url": remote_image_url,
+                    "image_url": remote_image_url,
+                    "page_url": page_url,
+                    "xml_photo": xml_photo,
+                    "alcohol": alcohol,
                 }
                 
                 wines_count += 1

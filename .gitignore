@@ -17,9 +17,15 @@ env/
 .tmp.driveupload/
 __MACOSX/
 *.tmp
-*.bak
+*.bak*
 *.log
 *.lnk
+sommelier_backup_*/
+data/missing_wines/
+MAX_*.webp
+debug_label_*.jpg
+litavschukov-*
+static/test_*.html
 
 # Scratch, debug scripts, research & analysis tools
 scratch/

@@ -202,6 +202,68 @@ class WineVLMDecoder:
             if line_clean:
                 lines.append(line_clean)
 
+        # Для вытянутых вертикальных этикеток (h / w >= 1.35)
+        # проверяем, содержит ли уже распознанный текст ключевые параметры (сорт, цвет, сладость).
+        # Если первый проход уже прочитал всю спецификацию вина, второй проход пропускается для скорости.
+        pw, ph = pil_img.size
+        need_bottom = False
+        if ph / float(pw) >= 1.35:
+            text_so_far = " ".join(lines).upper()
+            try:
+                from .wine_thesaurus import extract_grape_concepts, COLOR_ONTOLOGY, SWEETNESS_ONTOLOGY, SPECIAL_WINE_TERMS
+                has_grape = bool(extract_grape_concepts(text_so_far))
+                has_color = any(any(w in text_so_far for w in words) for words in COLOR_ONTOLOGY.values())
+                has_sweet = any(any(w in text_so_far for w in words) for words in SWEETNESS_ONTOLOGY.values())
+                has_special = any(any(w in text_so_far for w in words) for words in SPECIAL_WINE_TERMS.values())
+                
+                # Для Массандры строго проверяем: если нет ни сорта, ни Мускателя — обязательно запускаем нижний проход
+                is_massandra = "МАССАНДРА" in text_so_far or "MASSANDRA" in text_so_far
+                has_muskatel = any(w in text_so_far for w in SPECIAL_WINE_TERMS.get("MUSKATEL", []))
+                
+                if is_massandra and not (has_grape or has_muskatel):
+                    need_bottom = True
+                elif has_grape and (has_color or has_sweet or has_special):
+                    need_bottom = False
+                elif has_special and (has_color or has_sweet):
+                    need_bottom = False
+                else:
+                    need_bottom = True
+            except Exception:
+                need_bottom = True
+
+        if need_bottom:
+            try:
+                bot_crop = pil_img.crop((0, int(ph * 0.45), pw, ph))
+                bot_messages = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "image", "image": bot_crop},
+                            {"type": "text", "text": "What words are written on this wine label from top to bottom? Do not miss any word."}
+                        ]
+                    }
+                ]
+                bot_prompt = self.processor.apply_chat_template(bot_messages, tokenize=False, add_generation_prompt=True)
+                b_imgs, b_vids = process_vision_info(bot_messages)
+                b_inputs = self.processor(text=[bot_prompt], images=b_imgs, videos=b_vids, padding=True, return_tensors="pt")
+                if self.device.startswith("cuda"):
+                    b_inputs = b_inputs.to(self.device)
+                with torch.no_grad():
+                    b_gen_ids = self.model.generate(**b_inputs, max_new_tokens=max_tokens)
+                b_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(b_inputs.input_ids, b_gen_ids)]
+                bot_text = self.processor.batch_decode(b_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0].strip()
+
+                existing_upper = set(" ".join(lines).upper().split())
+                for b_line in bot_text.splitlines():
+                    b_clean = re.sub(r'^\s*(\d+[\.\)]\s*|[-\*•]\s*)', '', b_line.strip()).strip()
+                    if b_clean and not any(b_clean.lower().startswith(p) for p in intro_phrases):
+                        new_words = [w for w in b_clean.split() if w.upper() not in existing_upper]
+                        if new_words:
+                            lines.append(b_clean)
+                            existing_upper.update(w.upper() for w in new_words)
+            except Exception as e_bot:
+                print(f"[WineVLMDecoder] Bottom zone pass notice: {e_bot}")
+
         clean_text = "\n".join(lines).strip() if lines else output_text.strip()
         clean_text = clean_text.strip(' "\'\n\r\t')
 

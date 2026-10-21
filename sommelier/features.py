@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Извлечение структурированных признаков вина ТОЛЬКО из полей базы (название, slug, описание, категория).
 
 Каждый признак либо найден в тексте (и тогда хранится доказательство-цитата), либо None («в базе не указано»).
@@ -119,12 +118,14 @@ def body(d, tan=None, has_oak=False, months=None):
     hit(_FULL_WEAK, 0.4, 0.8)
     m = re.search(_MID, d)
     if m:
-        score = (score + 2.5) / 2; why.append(m.group(0))
+        score = (score + 2.5) / 2
+        why.append(m.group(0))
     if tan is not None:
         score += 0.6 if tan >= 3 else (-0.2 if tan <= 1 else 0.1)
         why.append(f"танин={tan}")
     if has_oak and months and months >= 6:
-        score += 0.4; why.append(f"выдержка {months} мес.")
+        score += 0.4
+        why.append(f"выдержка {months} мес.")
     if not why:
         return None, None
     return max(0.5, min(4.0, round(score, 2))), "; ".join(why)

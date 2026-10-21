@@ -13,7 +13,13 @@ services:
       - PYTHONUNBUFFERED=1
       - VINA_MATCHER_MODE=hybrid
     volumes:
+      - ./app.py:/app/app.py
       - ./models:/app/models
+      - ./wines_integrated_clean.csv:/app/wines_integrated_clean.csv
+      - ./wines_images_clean:/app/wines_images_clean
+      - ./pipeline:/app/pipeline
+      - ./sommelier:/app/sommelier
+      - ./static:/app/static
     deploy:
       resources:
         reservations:

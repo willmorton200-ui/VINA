@@ -1,15 +1,12 @@
-# -*- coding: utf-8 -*-
 """Детерминированный движок подбора: жёсткие фильтры -> общие оси -> скоринг правил -> диверсификация.
 
 Все факты о вине берутся из catalog.json (features + evidence). Веса правил — «настройки вкуса» системы,
 их предполагается калибровать по обратной связи (см. feedback.py).
 Нет данных о признаке -> вклад правила = 0 и признак попадает в список «в базе не указано».
 """
-import math
 import statistics as st
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from typing import Optional
 
 # ---- веса правил (методика из ТЗ) ---------------------------------------------------------------
 W = dict(
@@ -27,20 +24,20 @@ MAX_POS = sum(W.values())
 
 @dataclass
 class Context:
-    dish_text: Optional[str] = None
-    dish: Optional[dict] = None                 # результат dishes.parse_dish
+    dish_text: str | None = None
+    dish: dict | None = None                 # результат dishes.parse_dish
     colors: set = field(default_factory=set)    # {'Красное', ...}; пусто = любые
-    sparkling: Optional[bool] = None
-    sweet_ok: Optional[set] = None              # допустимые уровни сладости {0,1,2,3}
+    sparkling: bool | None = None
+    sweet_ok: set | None = None              # допустимые уровни сладости {0,1,2,3}
     grapes_like: set = field(default_factory=set)
     grapes_avoid: set = field(default_factory=set)
     avoid_oak: bool = False
-    tannin_pref: Optional[str] = None           # 'low' | 'high'
-    body_pref: Optional[str] = None             # 'light' | 'full'
+    tannin_pref: str | None = None           # 'low' | 'high'
+    body_pref: str | None = None             # 'light' | 'full'
     regions: set = field(default_factory=set)
-    occasion: Optional[str] = None              # celebration|aperitif|date|business|gift|family|casual
+    occasion: str | None = None              # celebration|aperitif|date|business|gift|family|casual
     experience: str = "novice"                  # novice|enthusiast|expert
-    budget: Optional[str] = None                # в базе цен нет — только фиксируем
+    budget: str | None = None                # в базе цен нет — только фиксируем
     excluded_ids: set = field(default_factory=set)
     notes: list = field(default_factory=list)
 
@@ -50,7 +47,8 @@ class Context:
             if k in ("notes",):
                 self.notes += [n for n in v if n not in self.notes]
             elif isinstance(v, set):
-                setattr(self, k, getattr(self, k) | v)
+                cur = getattr(self, k)
+                setattr(self, k, (cur | v) if cur is not None else set(v))
             elif v not in (None, False, "") and not (k == "experience" and v == "novice"):
                 setattr(self, k, v)
         return self
@@ -103,19 +101,26 @@ class Engine:
         for w in self.wines:
             f = w["features"]
             if w["id"] in ctx.excluded_ids:
-                dropped["исключено вами ранее"] += 1; continue
+                dropped["исключено вами ранее"] += 1
+                continue
             if ctx.colors and w["category"] not in ctx.colors:
-                dropped["другой цвет"] += 1; continue
+                dropped["другой цвет"] += 1
+                continue
             if ctx.sparkling is True and not f["sparkling"]:
-                dropped["не игристое"] += 1; continue
+                dropped["не игристое"] += 1
+                continue
             if ctx.sparkling is False and f["sparkling"]:
-                dropped["игристое"] += 1; continue
+                dropped["игристое"] += 1
+                continue
             if ctx.sweet_ok is not None and f["sweetness"] is not None and f["sweetness"] not in ctx.sweet_ok:
-                dropped["другая сладость"] += 1; continue
+                dropped["другая сладость"] += 1
+                continue
             if ctx.grapes_avoid and set(self.grapes_of(w)) & ctx.grapes_avoid:
-                dropped["нежелательный сорт"] += 1; continue
+                dropped["нежелательный сорт"] += 1
+                continue
             if ctx.avoid_oak and f["oak"]:
-                dropped["упомянут дуб/бочка"] += 1; continue
+                dropped["упомянут дуб/бочка"] += 1
+                continue
             out.append(w)
         return out, dropped
 
@@ -236,9 +241,11 @@ class Engine:
         pv, pmsg = 0.0, []
         gs = set(self.grapes_of(w))
         if ctx.grapes_like and gs & ctx.grapes_like:
-            pv += 0.8; pmsg.append("любимый сорт")
+            pv += 0.8
+            pmsg.append("любимый сорт")
         if ctx.regions and w["region"] in ctx.regions:
-            pv += 0.4; pmsg.append("предпочтительный регион")
+            pv += 0.4
+            pmsg.append("предпочтительный регион")
         if ctx.tannin_pref and f["tannin"] is not None:
             if ctx.tannin_pref == "high":
                 pv += 0.5 if f["tannin"] >= 2.8 else -0.3
@@ -250,7 +257,8 @@ class Engine:
             pv += 0.6 * (1 - abs(target - f["body"]) / 2.5)
             pmsg.append("тело по вкусу")
         if ctx.sweet_ok is not None and f["sweetness"] is None:
-            pv -= 0.3; pmsg.append("сладость не указана в базе")
+            pv -= 0.3
+            pmsg.append("сладость не указана в базе")
         if pmsg:
             add("prefs", pv, ", ".join(pmsg))
 
@@ -295,11 +303,87 @@ class Engine:
     def _sim(self, a, b):
         wa, wb = a["wine"], b["wine"]
         s = 0.0
-        if set(self.grapes_of(wa)) & set(self.grapes_of(wb)): s += 0.4
-        if wa["category"] == wb["category"] and wa["features"]["sparkling"] == wb["features"]["sparkling"]: s += 0.3
-        if wa["region"] == wb["region"]: s += 0.15
-        if wa["winery"] == wb["winery"]: s += 0.15
+        if set(self.grapes_of(wa)) & set(self.grapes_of(wb)):
+            s += 0.4
+        if wa["category"] == wb["category"] and wa["features"]["sparkling"] == wb["features"]["sparkling"]:
+            s += 0.3
+        if wa["region"] == wb["region"]:
+            s += 0.15
+        if wa["winery"] == wb["winery"]:
+            s += 0.15
         return s
+
+    # ---- оценка одного вина к блюду: место в каталоге и лучшие блюда ----------------------------------
+    def dish_rank(self, score, ctx):
+        """Место балла среди всех вин каталога к этому блюду: доля вин с меньшим баллом и лучший балл."""
+        scores = [self.score(w, ctx)[0] for w in self.wines]
+        return dict(beats=round(sum(1 for s in scores if s < score) / len(scores), 2), best=max(scores))
+
+    def best_dishes(self, wine, k=4, exclude=()):
+        """Типовые блюда (dishes.SUGGESTIONS), к которым у вина самый высокий балл. exclude — основы текущего блюда."""
+        from .dishes import main_names, parse_dish, SUGGESTIONS
+        if not hasattr(self, "_suggestions"):
+            self._suggestions = [(label, query, parse_dish(query)) for label, query in SUGGESTIONS]
+        rated = [dict(label=label, query=query, score=self.score(wine, Context(dish=d))[0])
+                 for label, query, d in self._suggestions if not main_names(d) & set(exclude)]
+        return sorted(rated, key=lambda x: -x["score"])[:k]
+
+    # ---- альтернативы к конкретному вину -------------------------------------------------------------
+    def similar(self, wine, k=5, max_per_winery=2):
+        """Вина каталога, похожие на `wine` по стилю: тот же цвет и игристость, близкая сладость (жёстко),
+        затем сорт, тип, тело, танины, кислотность, ароматика, регион. Каждый довод — из полей базы."""
+        f = wine["features"]
+        grapes = set(self.grapes_of(wine))
+        aroma = set(f["aroma"] or [])
+        name_key = (wine["name"].strip().lower(), wine["winery"])
+        scored = []
+        for w in self.wines:
+            g = w["features"]
+            if w["id"] == wine["id"] or (w["name"].strip().lower(), w["winery"]) == name_key:
+                continue
+            if w["category"] != wine["category"] or g["sparkling"] != f["sparkling"]:
+                continue
+            if f["sweetness"] is not None and g["sweetness"] is not None and abs(f["sweetness"] - g["sweetness"]) > 1:
+                continue
+            score, reasons = 0.0, []
+            common = grapes & set(self.grapes_of(w))
+            if common:
+                score += 0.35
+                reasons.append("тот же сорт: " + ", ".join(sorted(common)))
+            if wine.get("type") and w.get("type") == wine["type"]:
+                score += 0.15
+                reasons.append(f"тот же тип: {w['type'].lower()}")
+            for key, weight, label in (("body", 0.15, "похожее тело"), ("tannin", 0.1, "похожие танины"), ("acidity", 0.05, "похожая кислотность")):
+                if f[key] is not None and g[key] is not None:
+                    closeness = max(0.0, 1.0 - abs(f[key] - g[key]) / 2.0)
+                    score += weight * closeness
+                    if closeness >= 0.75:
+                        reasons.append(label)
+            shared_aroma = aroma & set(g["aroma"] or [])
+            if aroma and shared_aroma:
+                score += 0.2 * len(shared_aroma) / len(aroma | set(g["aroma"] or []))
+                reasons.append("общие ноты: " + ", ".join(sorted(shared_aroma)[:3]))
+            if f["sweetness"] is not None and g["sweetness"] == f["sweetness"]:
+                score += 0.05
+            if wine["region"] and w["region"] == wine["region"]:
+                score += 0.1
+                reasons.append(f"тот же регион: {w['region']}")
+            if f["oak"] and g["oak"]:
+                score += 0.05
+                reasons.append("тоже с дубовыми тонами")
+            scored.append((score, w, reasons))
+        scored.sort(key=lambda item: (-item[0], item[1]["name"]))
+        picks, per_winery, seen_names = [], Counter(), set()
+        for score, w, reasons in scored:
+            key = (w["name"].strip().lower(), w["winery"])
+            if key in seen_names or per_winery[w["winery"]] >= max_per_winery:
+                continue
+            seen_names.add(key)
+            per_winery[w["winery"]] += 1
+            picks.append(dict(wine=w, score=round(score, 3), reasons=reasons))
+            if len(picks) >= k:
+                break
+        return picks
 
     def _diversify(self, scored, k):
         if not scored:
@@ -309,7 +393,8 @@ class Engine:
             key = r["wine"]["name"].strip().lower()
             if key in seen_names:
                 continue
-            seen_names.add(key); cands.append(r)
+            seen_names.add(key)
+            cands.append(r)
         cands = cands[:120]
         picks = [cands[0]]
         floor = cands[0]["score"] - 15         # разнообразие не должно тянуть в откровенно слабое
@@ -392,7 +477,8 @@ class Engine:
         lift = {t: (c / n) / (allc[t] / N) for t, c in gc.items() if c >= max(3, 0.15 * n)}
         top_aroma = [t for t, _ in sorted(gc.items(), key=lambda kv: -kv[1])[:4]]
         distinct = [t for t, _ in sorted(lift.items(), key=lambda kv: -kv[1]) if lift[t] > 1.25][:3]
-        share = lambda pred: round(sum(1 for f in fs if pred(f)) / n, 2)
+        def share(pred):
+            return round(sum(1 for f in fs if pred(f)) / n, 2)
         return dict(
             label=label, n=n,
             body=mean("body"), acidity=mean("acidity"), tannin=mean("tannin"),
@@ -428,9 +514,12 @@ def _aroma_links(tags, ax):
     comp, cont, why, why_c = [], [], [], []
     for req, d in rules:
         if req & tags:
-            comp += d["complement"]; cont += d["contrast"]
-            if d["why"] and d["why"] not in why: why.append(d["why"])
-            if d["why_contrast"] and d["why_contrast"] not in why_c: why_c.append(d["why_contrast"])
+            comp += d["complement"]
+            cont += d["contrast"]
+            if d["why"] and d["why"] not in why:
+                why.append(d["why"])
+            if d["why_contrast"] and d["why_contrast"] not in why_c:
+                why_c.append(d["why_contrast"])
     if not (comp or cont):
         return None
     return dict(complement=comp, contrast=cont, why="; ".join(why), why_contrast="; ".join(why_c))

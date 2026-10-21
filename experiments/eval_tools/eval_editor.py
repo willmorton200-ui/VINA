@@ -8,11 +8,43 @@ import os
 
 app = FastAPI()
 
-CATALOG_IMAGES_DIR = "D:/VINA/media"
-CATALOG_CSV = "D:/VINA/data/products_catalog.csv"
+from pathlib import Path
+this_file = Path(__file__).resolve()
+BASE_DIR = this_file.parent
+if not (BASE_DIR / "wines_integrated_clean.csv").exists():
+    for p in [this_file.parent.parent, this_file.parent.parent.parent]:
+        if (p / "wines_integrated_clean.csv").exists():
+            BASE_DIR = p
+            break
 
-if os.path.exists(CATALOG_IMAGES_DIR):
-    app.mount("/catalog_images", StaticFiles(directory=CATALOG_IMAGES_DIR), name="catalog_images")
+CATALOG_CSV = BASE_DIR / "wines_integrated_clean.csv"
+if not CATALOG_CSV.exists():
+    CATALOG_CSV = BASE_DIR / "data" / "products_catalog.csv"
+
+CATALOG_IMAGES_DIR = BASE_DIR / "wines_images_clean" / "wines_images"
+if not CATALOG_IMAGES_DIR.exists():
+    CATALOG_IMAGES_DIR = BASE_DIR / "media"
+
+CATALOG_CSV = str(CATALOG_CSV)
+CATALOG_IMAGES_DIR = str(CATALOG_IMAGES_DIR)
+
+@app.get("/catalog_images/{filename:path}")
+async def get_catalog_image(filename: str):
+    if not filename:
+        return JSONResponse(status_code=404, content={"error": "Empty filename"})
+    p = Path(CATALOG_IMAGES_DIR) / filename
+    if p.is_file():
+        return FileResponse(str(p))
+    stem = Path(filename).stem
+    for ext in [".webp", ".jpg", ".png", ".jpeg"]:
+        candidate = Path(CATALOG_IMAGES_DIR) / f"{stem}{ext}"
+        if candidate.is_file():
+            return FileResponse(str(candidate))
+    for ext in [Path(filename).suffix, ".webp", ".jpg", ".png", ".jpeg"]:
+        candidate = Path(BASE_DIR) / f"{stem}{ext}"
+        if candidate.is_file():
+            return FileResponse(str(candidate))
+    return JSONResponse(status_code=404, content={"error": "Image not found"})
 
 try:
     catalog_df = pd.read_csv(CATALOG_CSV, encoding='utf-8')
@@ -40,7 +72,7 @@ for _, row in catalog_df.iterrows():
 
 @app.get("/")
 async def get_index():
-    html_content = """
+    html_content = r"""
     <!DOCTYPE html>
     <html lang="ru">
     <head>

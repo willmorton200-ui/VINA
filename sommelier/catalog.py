@@ -1,5 +1,3 @@
-
-# -*- coding: utf-8 -*-
 """Сборка каталога: wines_integrated.csv -> data/catalog.json (+ отчёт о полноте разметки)."""
 import json
 import os
@@ -12,7 +10,7 @@ import pandas as pd
 from .features import extract, norm
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_CSV = os.path.join(HERE, "..", "wines_integrated.csv")
+DEFAULT_CSV = os.path.join(HERE, "data", "wines_integrated.csv")
 CATALOG_JSON = os.path.join(HERE, "data", "catalog.json")
 
 # Чистка поля «Сорт винограда»: не сорта убираем, синонимы одного сорта сводим, составные значения делим
@@ -48,6 +46,8 @@ def wine_type(w):
 
 
 def build(csv_path=DEFAULT_CSV, out=CATALOG_JSON):
+    """csv -> список вин. `out=None` пропускает запись кэша (нужно, когда каталог рядом с кодом смонтирован
+    read-only, как в проде): сборка из ~2000 строк занимает доли секунды, кэш на диске не обязателен."""
     df = pd.read_csv(csv_path, encoding="utf-8-sig").fillna("")
     wines = []
     for _, r in df.iterrows():
@@ -71,9 +71,10 @@ def build(csv_path=DEFAULT_CSV, out=CATALOG_JSON):
         }
         w["type"] = wine_type(w)
         wines.append(w)
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    with open(out, "w", encoding="utf-8") as fh:
-        json.dump(wines, fh, ensure_ascii=False, indent=1)
+    if out is not None:
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        with open(out, "w", encoding="utf-8") as fh:
+            json.dump(wines, fh, ensure_ascii=False, indent=1)
     return wines
 
 
@@ -93,7 +94,7 @@ def coverage_report(wines):
     rep["oak_mentioned"] = sum(w["features"]["oak"] for w in wines)
     rep["aroma_any"] = sum(bool(w["features"]["aroma"]) for w in wines)
     rep["food_in_desc"] = sum(bool(w["features"]["food_in_desc"]) for w in wines)
-    return {k: f"{v} ({v / n:.0%})" for k, v in rep}
+    return {k: f"{v} ({v / n:.0%})" for k, v in rep.items()}
 
 
 if __name__ == "__main__":

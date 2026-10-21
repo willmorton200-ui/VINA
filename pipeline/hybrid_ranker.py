@@ -157,6 +157,11 @@ def compute_match_fractions(ocr_text: str, wine: dict) -> BonusResult:
     if sw_val in detected_sweet:
         res.f = 1.0
         res.matched["F"] = [sw_val]
+    elif sw_val and detected_sweet and sw_val not in detected_sweet:
+        # Противоречие сахара/сухости: на этикетке указан один тип сладости, а кандидат другого типа
+        res.f = -1.0
+    else:
+        res.f = 0.0
 
     # --- КАТЕГОРИЯ A: НАИМЕНОВАНИЕ / БРЕНД (Ступенчатое правило Алексея) ---
     color_all = set().union(*COLOR_ONTOLOGY.values())
@@ -285,10 +290,17 @@ def compute_match_fractions(ocr_text: str, wine: dict) -> BonusResult:
     is_reserve_candidate = any(v in full_wine_str for v in SPECIAL_WINE_TERMS.get("RESERVE", []))
     ocr_has_reserve = any(_match(v) for v in SPECIAL_WINE_TERMS.get("RESERVE", []))
 
-    if is_reserve_candidate and not ocr_has_reserve:
-        res.a = min(res.a, 0.25)
-    elif not is_reserve_candidate and ocr_has_reserve:
-        res.a = min(res.a, 0.25)
+    # Защита линеек Мускатель vs Мускат vs Портвейн:
+    has_muskatel = any(_match(v) for v in SPECIAL_WINE_TERMS.get("MUSKATEL", []))
+    wine_has_muskatel = any(v in full_wine_str for v in SPECIAL_WINE_TERMS.get("MUSKATEL", []))
+    if has_muskatel:
+        if wine_has_muskatel:
+            res.a = 1.0
+            matched_display.append("МУСКАТЕЛЬ")
+        else:
+            res.a = min(res.a, 0.20)
+    elif wine_has_muskatel and not has_muskatel:
+        res.a = min(res.a, 0.20)
 
     res.matched["A"] = list(dict.fromkeys(matched_display))
     return res
@@ -296,15 +308,18 @@ def compute_match_fractions(ocr_text: str, wine: dict) -> BonusResult:
 
 def apply_bonus(n: float, frac: BonusResult) -> dict:
     ib = max(0.0, 100.0 - n)
-    # Для положительных бонусов множитель — классический идеальный бонус IB (добивает до 100%).
-    # Для отрицательных штрафов (прямое противоречие сорта c < 0 или цвета d < 0)
-    # база штрафа не должна схлопываться до нуля при высоком N.
     penalty_base = max(ib, 40.0)
     
     A = ib * W_A * frac.a
     C = (ib if frac.c >= 0 else penalty_base) * W_C * frac.c
     D = (ib if frac.d >= 0 else penalty_base) * W_D * frac.d
-    F = (ib if frac.f >= 0 else penalty_base) * W_F * frac.f
+    F = (ib * W_F * frac.f) if frac.f >= 0 else -15.0
+
+    # Если этикетка прямо противоречит сахару кандидата (напр., на этикетке полусладкое, а в базе сухое),
+    # такое вино не может быть верным, сортовой бонус обнуляется, а бонус за бренд урезается
+    if frac.f < 0:
+        C = min(0.0, C)
+        A = min(A, ib * 0.15)
     
     if_val = max(0.0, min(100.0, n + A + C + D + F))
     return {"N": round(n, 2), "IB": round(ib, 2), "A": round(A, 2), "C": round(C, 2),

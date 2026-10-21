@@ -345,6 +345,30 @@ class CylindricalDewarpEngine:
             }
         }
 
+    @staticmethod
+    def check_has_micro_fonts(img_bgr: np.ndarray) -> bool:
+        """
+        Быстрый (10-15 мс) детектор наличия мелких шрифтов (6-10 pt) на фото.
+        Если мелких шрифтов нет (крупный шрифт/чистая этикетка), возвращает False,
+        что позволяет безопасно масштабировать кадр до 1800 px.
+        """
+        h, w = img_bgr.shape[:2]
+        if max(h, w) <= 1800:
+            return False
+        scale = 0.5
+        small = cv2.resize(img_bgr, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+        grad_x = np.abs(cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3))
+        thresh = (grad_x > 35).astype(np.uint8)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (4, 1))
+        connected = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+        _, _, stats, _ = cv2.connectedComponentsWithStats(connected)
+        h_comps = stats[1:, cv2.CC_STAT_HEIGHT]
+        w_comps = stats[1:, cv2.CC_STAT_WIDTH]
+        micro_mask = (h_comps >= 4) & (h_comps <= 14) & (w_comps >= 6) & (w_comps <= 250)
+        count_micro = int(np.sum(micro_mask))
+        return count_micro >= 60
+
     def process_image(self, 
                       img_bgr: np.ndarray, 
                       reference_bgr: np.ndarray = None,
@@ -356,9 +380,15 @@ class CylindricalDewarpEngine:
         timings = {}
         h_orig, w_orig = img_bgr.shape[:2]
         
+        proc_img = img_bgr
+        if h_orig > 1920 and w_orig > 1080:
+            scale_in = max(1920.0 / float(h_orig), 1080.0 / float(w_orig))
+            if scale_in < 1.0:
+                proc_img = cv2.resize(img_bgr, (int(round(w_orig * scale_in)), int(round(h_orig * scale_in))), interpolation=cv2.INTER_AREA)
+
         # 1. Localization & Cropping of Single Largest Label Mask
         t0 = time.perf_counter()
-        cropped_bgr, cropped_mask, bbox_info = self.stage1.segment_bottle_and_label(img_bgr)
+        cropped_bgr, cropped_mask, bbox_info = self.stage1.segment_bottle_and_label(proc_img)
         cropped_mask = self.stage1._keep_largest_component(cropped_mask)
         timings["stage1_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
 
@@ -481,7 +511,18 @@ class CylindricalDewarpEngine:
             # Сортируем все наклейки строго по вертикали (сверху вниз по Y-координате)
             sorted_labels = sorted(bottle_labels, key=lambda l: l["box"][1])
 
-            if len(sorted_labels) > 1:
+            # Early Exit: если первичная наклейка уже содержит сорт винограда И (цвет или сладость или спец-линейку),
+            # опрос второстепенных наклеек (кольереток, медалей) не требуется — экономим до 15 секунд!
+            from .wine_thesaurus import extract_grape_concepts, COLOR_ONTOLOGY, SWEETNESS_ONTOLOGY, SPECIAL_WINE_TERMS
+            sel_upper = selected_text.upper()
+            has_p_grape = bool(extract_grape_concepts(sel_upper))
+            has_p_color = any(any(w in sel_upper for w in words) for words in COLOR_ONTOLOGY.values())
+            has_p_sweet = any(any(w in sel_upper for w in words) for words in SWEETNESS_ONTOLOGY.values())
+            has_p_special = any(any(w in sel_upper for w in words) for words in SPECIAL_WINE_TERMS.values())
+            
+            skip_secondary = (has_p_grape and (has_p_color or has_p_sweet or has_p_special))
+
+            if len(sorted_labels) > 1 and not skip_secondary:
                 dewarped_segments = []
                 # Находим соответствие или выпрямляем каждую наклейку
                 for l_idx, lbl in enumerate(sorted_labels):
@@ -490,10 +531,11 @@ class CylindricalDewarpEngine:
                     if lbl.get("is_primary", False) and dewarped_display is not None and dewarped_display.size > 0:
                         dewarped_segments.append(dewarped_display)
                     else:
+                        h_p, w_p = proc_img.shape[:2]
                         spad = 12
                         sx0, sy0 = max(0, sbx1 - spad), max(0, sby1 - spad)
-                        sx1, sy1 = min(w_orig, sbx2 + spad), min(h_orig, sby2 + spad)
-                        sec_crop_bgr = img_bgr[sy0:sy1, sx0:sx1]
+                        sx1, sy1 = min(w_p, sbx2 + spad), min(h_p, sby2 + spad)
+                        sec_crop_bgr = proc_img[sy0:sy1, sx0:sx1]
 
                         sec_mask = lbl.get("mask")
                         if sec_mask is not None:

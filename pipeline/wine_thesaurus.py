@@ -61,7 +61,7 @@ GRAPE_ONTOLOGY = {
         "KRASNOSTOP", "КРАСНОСТОП", "КРАСНОСТОП ЗОЛОТОВСКИЙ", "КРАСНОСТОП АНАПСКИЙ"
     ],
     "МУСКАТ": [
-        "MUSCAT", "MOSCATO", "MUSKAT", "МУСКАТ", "МУСКАТЕЛЬ", "MUSCATEL", "MUSKATEL"
+        "MUSCAT", "MOSCATO", "MUSKAT", "МУСКАТ"
     ],
     "АЛИГОТЕ": [
         "ALIGOTE", "АЛИГОТЕ"
@@ -200,6 +200,7 @@ SPECIAL_WINE_TERMS = {
     "AVTORSKAYA_TEHNOLOGIYA": {"АВТОРСКАЯ ТЕХНОЛОГИЯ", "МОНО", "MONO"},
     "BRUT": {"BRUT", "БРЮТ", "BRYUT", "EXTRA BRUT", "ЭКСТРА БРЮТ"},
     "ENDEMY": {"ЭНДЕМЫ", "ENDEMY", "ЭНДЕМЬ", "ЭНДЕМИ"},
+    "MUSKATEL": {"МУСКАТЕЛЬ", "MUSKATEL", "MUSCATEL", "МУСКАТЕЛИ"},
 }
 
 # 5. ОНТОЛОГИЯ БРЕНДОВ И ТЕРРУАРОВ (BRAND & TERROIR ONTOLOGY)
@@ -213,7 +214,7 @@ BRAND_TERROIR_SYNONYMS = {
     "МАРКОТХ": {"МАРКОТХ", "MARKOTKH"},
     "ГАЙ-КОДЗОР": {"ГАЙ КОДЗОР", "ГАЙ-КОДЗОР", "GAI KODZOR", "GAI-KODZOR", "ГАЙКОДЗОР"},
     "ДВА_ПЕТРА": {"TWO PETERS", "ДВА ПЕТРА", "TWO", "PETERS", "ДВА", "ПЕТРА"},
-    "ЛИТАВЩУК": {"ЛИТАВЩУК", "LITAVSHCHUK", "ЛИТАВЩУКОВ"},
+    "ЛИТАВЩУК": {"ЛИТАВЩУК", "LITAVSHCHUK", "ЛИТАВЩУКОВ", "ЛИТАВЧУКОВ", "ЛИТАВЧУК", "LITAVSCHUKOV", "LITAVCHUKOV"},
     "ВЕДЕРНИКОВ": {"ВЕДЕРНИКОВ", "ВЕДЕРНИКОВЪ", "VEDERNIKOV"},
     "УЗУНОВ": {"УЗУНОВ", "UZUNOV"},
     "БАТРАК": {"БАТРАК", "BATRAK"},

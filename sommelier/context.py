@@ -1,9 +1,8 @@
-
-# -*- coding: utf-8 -*-
 """Слой 1: свободный текст -> структурированный Context (правила; LLM может подменить эту функцию, см. llm.py)."""
 import re
-from .engine import Context
+
 from .dishes import parse_dish
+from .engine import Context
 from .features import norm
 
 COLOR_RX = [
@@ -50,7 +49,7 @@ class Parser:
             if toks and re.search(r"(?<!\w)" + re.escape(toks[0]), t):
                 groups.setdefault(toks[0], []).append(g)
         chosen = set()
-        for first, gs in groups.items():
+        for _first, gs in groups.items():
             full = [g for g in gs if len(self._gtok[g]) > 1 and all(re.search(r"(?<!\w)" + re.escape(s), t) for s in self._gtok[g])]
             chosen |= set(full or gs)
         return chosen
@@ -97,7 +96,8 @@ class Parser:
         for r in self.regions:
             if norm(r).split()[0][:5] in t:
                 ctx.regions.add(r)
-        if re.search(r"донск|долина дона", t): ctx.regions.add("Долина Дона")
+        if re.search(r"донск|долина дона", t):
+            ctx.regions.add("Долина Дона")
         # повод
         for oc, rx in OCCASION_RX:
             if re.search(rx, t):

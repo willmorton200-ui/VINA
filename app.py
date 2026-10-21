@@ -24,6 +24,13 @@ from pipeline.vina_studio_matcher import VinaStudioMatcher
 from pipeline.color_matcher import calculate_structural_orb_matches
 from pipeline.dino_engine import DinoLabelEngine
 from pipeline.hybrid_ranker import HybridRanker
+from pipeline.missing_wines import (
+    log_missing_wine,
+    get_dashboard_summary,
+    update_request_status,
+    USER_FRIENDLY_MESSAGE,
+    IMAGES_DIR as MISSING_WINES_IMAGES_DIR,
+)
 
 app = FastAPI(title="VINA Cylindrical Dewarping Studio", version="1.0.0")
 
@@ -55,16 +62,6 @@ try:
 except Exception as e:
     print(f"[app.py] Warning: DINO initialization failed ({e}), falling back to SigLIP only.")
 
-# ---- Sommelier (ленивая инициализация) ----
-_sommelier = None
-
-def get_sommelier():
-    global _sommelier
-    if _sommelier is None:
-        from sommelier.sommelier import Sommelier
-        _sommelier = Sommelier()
-    return _sommelier
-
 from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -81,6 +78,8 @@ if STATIC_DIR.exists():
 if TEST_DATASET_DIR.exists():
     app.mount("/test_dataset", StaticFiles(directory=str(TEST_DATASET_DIR)), name="test_dataset")
 
+SERVER_BOOT_ID = str(int(time.time()))
+
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
     index_file = STATIC_DIR / "index.html"
@@ -94,7 +93,11 @@ async def serve_scanner():
     scanner_file = STATIC_DIR / "scanner.html"
     if scanner_file.exists():
         with open(str(scanner_file), "r", encoding="utf-8") as f:
-            return f.read()
+            html = f.read()
+        return HTMLResponse(
+            content=html.replace("__SERVER_BOOT_ID__", SERVER_BOOT_ID),
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+        )
     return "<h1>Scanner UI not found</h1>"
 
 @app.get("/map", response_class=HTMLResponse)
@@ -104,6 +107,15 @@ async def serve_map():
         with open(str(map_file), "r", encoding="utf-8") as f:
             return f.read()
     return "<h1>Map UI not found</h1>"
+
+@app.get("/hub", response_class=HTMLResponse)
+async def serve_hub():
+    hub_file = STATIC_DIR / "vina_hub.html"
+    if hub_file.exists():
+        with open(str(hub_file), "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>VINA Hub UI not found</h1>"
+
 
 @app.get("/style.css")
 async def get_style_css():
@@ -118,17 +130,24 @@ async def get_app_js():
 @app.get("/scanner.css")
 async def get_scanner_css():
     p = STATIC_DIR / "scanner.css"
-    return FileResponse(str(p), media_type="text/css") if p.exists() else JSONResponse({"error": "not found"}, 404)
+    return FileResponse(str(p), media_type="text/css", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}) if p.exists() else JSONResponse({"error": "not found"}, 404)
 
 @app.get("/scanner.js")
 async def get_scanner_js():
     p = STATIC_DIR / "scanner.js"
-    return FileResponse(str(p), media_type="application/javascript") if p.exists() else JSONResponse({"error": "not found"}, 404)
+    return FileResponse(str(p), media_type="application/javascript", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}) if p.exists() else JSONResponse({"error": "not found"}, 404)
 
 @app.get("/scanner.html", response_class=HTMLResponse)
 async def get_scanner_html():
     p = STATIC_DIR / "scanner.html"
-    return FileResponse(str(p), media_type="text/html") if p.exists() else JSONResponse({"error": "not found"}, 404)
+    if p.exists():
+        with open(str(p), "r", encoding="utf-8") as f:
+            html = f.read()
+        return HTMLResponse(
+            content=html.replace("__SERVER_BOOT_ID__", SERVER_BOOT_ID),
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+        )
+    return JSONResponse({"error": "not found"}, 404)
 
 @app.get("/znak.png")
 async def get_znak():
@@ -145,6 +164,7 @@ async def health_check():
     gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None (CPU)"
     return {
         "status": "healthy",
+        "boot_id": SERVER_BOOT_ID,
         "gpu_available": gpu_available,
         "gpu_name": gpu_name,
         "torch_version": torch.__version__,
@@ -216,7 +236,7 @@ async def process_upload(file: UploadFile = File(...)):
     result["has_reference"] = False
     return result
 
-CONFIDENCE_THRESHOLD = 86.0  # Порог проходимости итоговой уверенности (всё что < 86% считается отсутствующим в каталоге)
+CONFIDENCE_THRESHOLD = 50.0  # Порог проходимости итоговой уверенности (всё что >= 50% признается найденным в каталоге)
 
 @app.post("/v1/eval/predict")
 async def eval_predict(image: UploadFile = File(...)):
@@ -235,11 +255,12 @@ async def eval_predict(image: UploadFile = File(...)):
     if img_bgr is None:
         raise HTTPException(status_code=400, detail="Uploaded file is not a valid image")
 
-    # Пре-ресайз до 1600px для 12-мегапиксельных фото (ускорение в 5-10 раз)
-    h_in, w_in = img_bgr.shape[:2]
-    if max(h_in, w_in) > 1600:
-        scale_in = 1600.0 / max(h_in, w_in)
-        img_bgr = cv2.resize(img_bgr, (int(w_in * scale_in), int(h_in * scale_in)), interpolation=cv2.INTER_AREA)
+    h_orig, w_orig = img_bgr.shape[:2]
+    if h_orig > 1920 and w_orig > 1080:
+        scale_in = max(1920.0 / float(h_orig), 1080.0 / float(w_orig))
+        if scale_in < 1.0:
+            img_bgr = cv2.resize(img_bgr, (int(round(w_orig * scale_in)), int(round(h_orig * scale_in))), interpolation=cv2.INTER_AREA)
+
 
     # ШАГ 1: VINA STUDIO (Выпрямление & OCR)
     dewarped_img = None
@@ -301,6 +322,9 @@ async def eval_predict(image: UploadFile = File(...)):
             final_conf = round(best["IF"], 2)
             is_in_catalog = final_conf >= CONFIDENCE_THRESHOLD
 
+            if not is_in_catalog:
+                log_missing_wine(source="scanner", query_text=ocr_text, img_bgr=img_bgr, confidence=final_conf)
+
             return {
                 "slug": best_slug if is_in_catalog else None,
                 "name": wine_info.get("name", "") if is_in_catalog else "",
@@ -314,6 +338,7 @@ async def eval_predict(image: UploadFile = File(...)):
                 "ocr_text": ocr_text[:200] if ocr_text else "",
                 "candidates": candidates,
                 "status": "found" if is_in_catalog else "not_in_catalog",
+                "message": "" if is_in_catalog else USER_FRIENDLY_MESSAGE,
                 "engine": "hybrid_v2 (SigLIP2 + DINOv2-LoRA + OCR Formula)",
                 "total_time_ms": round((time.time() - t0) * 1000, 1),
             }
@@ -325,6 +350,7 @@ async def eval_predict(image: UploadFile = File(...)):
     candidates = cascade_result.get("candidates", [])
     candidates = sorted(candidates, key=lambda x: x.get("final_confidence", 0), reverse=True)
     if not candidates:
+        log_missing_wine(source="scanner", query_text=ocr_text, img_bgr=img_bgr, confidence=0.0)
         return {
             "slug": None,
             "name": "",
@@ -336,6 +362,7 @@ async def eval_predict(image: UploadFile = File(...)):
             "ocr_text": ocr_text[:200] if ocr_text else "",
             "candidates": [],
             "status": "not_in_catalog",
+            "message": USER_FRIENDLY_MESSAGE,
             "engine": "legacy_fallback (SigLIP only)",
             "total_time_ms": round((time.time() - t0) * 1000, 1),
         }
@@ -345,6 +372,9 @@ async def eval_predict(image: UploadFile = File(...)):
     wine_info = catalog.get_wine(best_slug) or {}
     final_conf = round(best_candidate.get("final_confidence", 0.0), 2)
     is_in_catalog = final_conf >= CONFIDENCE_THRESHOLD
+
+    if not is_in_catalog:
+        log_missing_wine(source="scanner", query_text=ocr_text, img_bgr=img_bgr, confidence=final_conf)
 
     return {
         "slug": best_slug if is_in_catalog else None,
@@ -357,9 +387,43 @@ async def eval_predict(image: UploadFile = File(...)):
         "ocr_text": ocr_text[:200] if ocr_text else "",
         "candidates": candidates,
         "status": "found" if is_in_catalog else "not_in_catalog",
+        "message": "" if is_in_catalog else USER_FRIENDLY_MESSAGE,
         "engine": "legacy_fallback (SigLIP only)",
         "total_time_ms": round((time.time() - t0) * 1000, 1),
     }
+
+# ---- Missing Wines & Admin Dashboard Endpoints ----
+@app.get("/api/missing-wines/image/{filename}")
+async def get_missing_wine_image(filename: str):
+    img_path = MISSING_WINES_IMAGES_DIR / filename
+    if not img_path.exists():
+        raise HTTPException(status_code=404, detail="Image not found")
+    return FileResponse(str(img_path))
+
+class MissingWineReportRequest(BaseModel):
+    source: str = "catalog_search"
+    query_text: str = ""
+
+@app.post("/api/missing-wines/report")
+async def report_missing_wine(req: MissingWineReportRequest):
+    res = log_missing_wine(source=req.source, query_text=req.query_text)
+    return res
+
+@app.get("/api/admin/dashboard/missing-wines")
+async def admin_dashboard_missing_wines():
+    return get_dashboard_summary()
+
+class UpdateStatusRequest(BaseModel):
+    status: str
+    admin_notes: str = ""
+
+@app.post("/api/admin/dashboard/missing-wines/{req_id}/status")
+async def admin_update_status(req_id: str, req: UpdateStatusRequest):
+    ok = update_request_status(req_id, req.status, req.admin_notes)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Request not found")
+    return {"success": True, "id": req_id, "new_status": req.status}
+
 
 @app.get("/api/wine/{slug}")
 async def get_wine_card(slug: str):
@@ -371,61 +435,115 @@ async def get_wine_card(slug: str):
 @app.get("/api/image/{slug}")
 async def get_wine_image(slug: str):
     wine = catalog.get_wine(slug)
-    if not wine or not wine["image_path"]:
-        raise HTTPException(status_code=404, detail="Image not found")
-    return FileResponse(wine["image_path"])
+    if wine and wine.get("image_path") and os.path.exists(wine["image_path"]):
+        return FileResponse(wine["image_path"])
+
+    for base_dir in ["wines_images_clean/wines_images", "/app/wines_images_clean/wines_images", "."]:
+        for ext in [".webp", ".png", ".jpg", ".jpeg"]:
+            candidate = os.path.join(base_dir, f"{slug}{ext}")
+            if os.path.exists(candidate):
+                return FileResponse(candidate)
+
+    # 1. Проверяем поле базы «Ссылка на изображение» (колонка 13 датасета)
+    remote_url = ""
+    if wine:
+        remote_url = wine.get("remote_image_url") or wine.get("image_url") or ""
+    
+    if remote_url and str(remote_url).startswith("http"):
+        try:
+            cache_dir = Path("wines_images_clean/wines_images")
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cached_file = cache_dir / f"{slug}.webp"
+            if not cached_file.exists():
+                import urllib.request
+                req = urllib.request.Request(remote_url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    if resp.status == 200:
+                        cached_file.write_bytes(resp.read())
+            if cached_file.exists():
+                return FileResponse(str(cached_file))
+        except Exception:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(remote_url)
+
+    for fallback in ["static/badge_glass.png", "/app/static/badge_glass.png"]:
+        if os.path.exists(fallback):
+            return FileResponse(fallback)
+    raise HTTPException(status_code=404, detail="Image not found")
 
 
 # ============================================================
-# Sommelier API endpoints
+# Sommelier AI (VINA2) + Pairing + OpenStreetMap + V2 Hub
 # ============================================================
 
-class SommelierAskRequest(BaseModel):
-    text: str
-    wine_slug: str | None = None
+from sommelier.service import SommelierService
+from sommelier.pairing import build_pairing_service, load_service_wines
+from sommelier.dialog_router import router as sommelier_dialog_router
+from sommelier.pairing_router import router as sommelier_pairing_router
+from sommelier.api_router import (
+    sommelier_router as sommelier_v2_router,
+    bind_existing_vina_catalog,
+    engine as sommelier_v2_engine,
+    HISTORICAL_WINES_DB,
+)
 
-@app.post("/api/sommelier/ask")
-async def sommelier_ask(req: SommelierAskRequest):
-    """Основной эндпоинт диалога с сомелье."""
-    som = get_sommelier()
-    result = som.ask(req.text)
-    return {
-        "kind": result.get("kind", "text"),
-        "text": result.get("text", ""),
-        "picks": result.get("picks", []),
-        "types": result.get("types", []),
-        "pool": result.get("pool", 0),
-        "code": result.get("code"),
-    }
+# 1. App State for Sommelier
+app.state.catalog = catalog
+
+SOMMELIER_CSV = BASE_DIR / "sommelier" / "data" / "wines_integrated.csv"
+SOMMELIER_FEEDBACK = BASE_DIR / "sommelier" / "data" / "feedback.jsonl"
+app.state.sommelier = SommelierService(SOMMELIER_CSV, SOMMELIER_FEEDBACK)
+
+try:
+    service_wines, updated_at = load_service_wines(str(SOMMELIER_CSV))
+    app.state.sommelier_pairing = build_pairing_service(
+        catalog_source="service",
+        service_wines=service_wines,
+        service_updated_at=updated_at,
+    )
+    print(f"[app.py] Sommelier Pairing service loaded with {len(service_wines)} catalog wines.")
+except Exception as e:
+    print(f"[app.py] Warning: could not load service pairing: {e}")
+    app.state.sommelier_pairing = build_pairing_service(catalog_source="demo")
+
+# 2. Bind existing VINA catalog for /api/v2 endpoints
+try:
+    catalog_list = []
+    for s, w in catalog.wines_by_slug.items():
+        w_copy = dict(w)
+        w_copy["sugar"] = w.get("sugar") or w.get("sweetness", "")
+        catalog_list.append(w_copy)
+    bind_existing_vina_catalog(catalog_list)
+except Exception as e:
+    print(f"[app.py] Warning: could not bind catalog to Sommelier v2: {e}")
+
+# 3. Include Routers
+# /api/sommelier: Dialog endpoints (/ask, /reset, /wine/{slug}, /wine/{slug}/alternatives)
+app.include_router(sommelier_dialog_router, prefix="/api")
+
+# /api/sommelier: Pairing endpoints (/pairing/dish, /analog, /pairing/wine/{slug}, /similar/{grape_id}, /grapes, /dishes, /health)
+app.include_router(sommelier_pairing_router, prefix="/api")
+
+# /api/v2: Catalog, Facets, History, Full Sommelier, Map Nearby Stores
+app.include_router(sommelier_v2_router)
 
 
-@app.post("/api/sommelier/reset")
-async def sommelier_reset():
-    """Сбросить контекст диалога."""
-    som = get_sommelier()
-    som.reset()
-    return {"status": "reset"}
-
-
-@app.get("/api/sommelier/wine/{slug}")
-async def sommelier_about_wine(slug: str, dish: str | None = None):
-    """Информация о конкретном вине через сомелье."""
-    som = get_sommelier()
-    result = som.about_wine(slug, dish=dish)
-    return {
-        "kind": result.get("kind", "text"),
-        "text": result.get("text", ""),
-        "id": result.get("id", slug),
-    }
+@app.get("/hub", response_class=HTMLResponse)
+async def serve_vina_hub():
+    """Единый интерфейс с 4 закладками: Сканер, Каталог вин, Карта вин, Сомелье."""
+    hub_file = STATIC_DIR / "vina_hub.html"
+    if hub_file.exists():
+        return FileResponse(str(hub_file), media_type="text/html")
+    return "<h1>Файл static/vina_hub.html еще не создан в папке static/</h1>"
 
 
 @app.get("/api/sommelier/catalog/stats")
 async def sommelier_catalog_stats():
     """Статистика каталога сомелье."""
-    som = get_sommelier()
     return {
-        "total_wines": len(som.wines),
-        "grape_count": dict(som.engine.grape_count.most_common(20)),
+        "dialog_wines_count": len(app.state.sommelier.wines) if app.state.sommelier else 0,
+        "pairing_health": app.state.sommelier_pairing.health() if app.state.sommelier_pairing else {},
+        "historical_wines_count": len(HISTORICAL_WINES_DB) if HISTORICAL_WINES_DB else 0,
     }
 
 
@@ -437,8 +555,9 @@ if __name__ == "__main__":
             try:
                 with urllib.request.urlopen("http://127.0.0.1:8080/api/health", timeout=1) as resp:
                     if resp.status == 200:
-                        webbrowser.open("http://127.0.0.1:8080")
+                        webbrowser.open("http://127.0.0.1:8080/hub")
                         break
-            except: pass
+            except Exception:
+                pass
     threading.Thread(target=_open_ui, daemon=True).start()
     uvicorn.run(app, host="0.0.0.0", port=8080)
