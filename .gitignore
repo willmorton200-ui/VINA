@@ -56,13 +56,28 @@ test_alpha.webp
 test_rembg_output.webp
 
 # Root loose notes, reports, PDFs, and PNGs
-*.pdf
-*.PNG
-*.txt
+/*.pdf
+/*.PNG
+/*.png
+/*.txt
 !requirements.txt
 agora-yachting-cabernet-sauvignon.png
 "Оценка полные бокалы.png"
 "Поставь оценку.png"
+preview_znak_test.png
+
+# Frontend static UI assets whitelist
+!static/img/**
+!static/svg/**
+!static/*.png
+!static/*.jpg
+!static/*.jpeg
+!static/*.webp
+!static/*.svg
+static/*_test.*
+static/*_backup.*
+static/znak_transparent*
+static/img/test_*
 
 # Shell/Bat scripts in root
 *.bat
