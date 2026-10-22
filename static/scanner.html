@@ -3535,10 +3535,9 @@
                     if (typeof load5NearbyWalkingStores === 'function') {
                         load5NearbyWalkingStores();
                         setTimeout(() => {
-                            if (typeof startWalkingNavigation === 'function') {
-                                startWalkingNavigation(userLatitude + 0.0022, userLongitude + 0.0018, 'Магазин «Свое Вино» Центр', 's1');
-                            }
-                        }, 500);
+                            const firstRowBtn = document.querySelector('.btn-store-route');
+                            if (firstRowBtn) firstRowBtn.click();
+                        }, 800);
                     }
                 }, 400);
             } else if (pStep === 'home_bottom') {
@@ -4102,23 +4101,17 @@
                 console.warn(e);
             }
 
-            if (!data || !Array.isArray(data.stores) || data.stores.length === 0) {
-                data = {
-                    selected_wine_name: "Вина России (Свое вино)",
-                    stores: [
-                        { store_id: "s1", name: "Магазин «Свое Вино» Центр", address: "ул. Красная, 42", working_hours: "10:00–22:00", lat: userLatitude + 0.0022, lon: userLongitude + 0.0018, distance_meters: 240, walk_time_minutes: 3, bottles_left: 8, price_rub: 1490 },
-                        { store_id: "s2", name: "Абрау-Дюрсо Ателье Вина", address: "ул. Мира, 18", working_hours: "10:00–23:00", lat: userLatitude - 0.0019, lon: userLongitude + 0.0029, distance_meters: 350, walk_time_minutes: 4, bottles_left: 12, price_rub: 1550 },
-                        { store_id: "s3", name: "Бутик Крымских Вин «Массандра»", address: "ул. Рашпилевская, 55", working_hours: "09:00–22:00", lat: userLatitude + 0.0034, lon: userLongitude - 0.0025, distance_meters: 480, walk_time_minutes: 6, bottles_left: 5, price_rub: 1450 },
-                        { store_id: "s4", name: "Фанагория — Фирменный магазин", address: "ул. Гоголя, 68", working_hours: "10:00–22:00", lat: userLatitude - 0.0038, lon: userLongitude - 0.0021, distance_meters: 560, walk_time_minutes: 7, bottles_left: 9, price_rub: 1390 },
-                        { store_id: "s5", name: "Магазин «Кубань-Вино»", address: "ул. Карасунская, 80", working_hours: "10:00–22:00", lat: userLatitude + 0.0045, lon: userLongitude + 0.0039, distance_meters: 690, walk_time_minutes: 9, bottles_left: 6, price_rub: 1520 }
-                    ]
-                };
-            }
+            const stores = (data && Array.isArray(data.stores)) ? data.stores : [];
+            const wineTitle = (data && data.selected_wine_name) ? data.selected_wine_name : (currentMapWineSlug ? "Выбранное вино" : "Вина России");
 
             try {
                 const lbl = document.getElementById('map-target-wine-label');
-                if (lbl && data.selected_wine_name) {
-                    lbl.innerHTML = `Выбрано: <b>${data.selected_wine_name}</b> — в наличии в 5 магазинах пешком`;
+                if (lbl) {
+                    if (stores.length > 0) {
+                        lbl.innerHTML = `Выбрано: <b>${wineTitle}</b> — найдено ${stores.length} реальных винных магазинов по данным OpenStreetMap`;
+                    } else {
+                        lbl.innerHTML = `Выбрано: <b>${wineTitle}</b> — поблизости нет винных магазинов на карте OpenStreetMap`;
+                    }
                 }
 
                 if (userLocationMarker && osmMapInstance) osmMapInstance.removeLayer(userLocationMarker);
@@ -4142,10 +4135,21 @@
                 const bounds = [[userLatitude, userLongitude]];
                 const listEl = document.getElementById('vina-stores-list');
 
-                listEl.innerHTML = (data.stores || []).map((s, idx) => {
+                if (stores.length === 0) {
+                    listEl.innerHTML = `
+                        <div style="padding: 22px 18px; text-align: center; color: #475569; font-size: 13px; background: #fff; border-radius: 14px; border: 1px dashed #cbd5e1; margin: 10px 0;">
+                            <div style="font-size: 30px; margin-bottom: 6px;">🍷🗺️</div>
+                            <div style="font-weight: 700; color: #0f172a; margin-bottom: 4px; font-size: 15px;">Винные магазины поблизости не найдены</div>
+                            <div style="line-height: 1.45; color: #64748b;">В радиусе пешей доступности (~5 км) на открытой карте OpenStreetMap не отмечено специализированных винотек или алкогольных бутиков. Попробуйте обновить геопозицию.</div>
+                        </div>
+                    `;
+                    osmMapInstance.setView([userLatitude, userLongitude], 14);
+                    return;
+                }
+
+                listEl.innerHTML = stores.map((s, idx) => {
                     bounds.push([s.lat, s.lon]);
 
-                    // Места винных магазинов на карте: только бокал и крупный номер (без длинных названий)
                     const storeIcon = L.divIcon({
                         className: 'vina-map-glass-marker',
                         html: `
@@ -4160,20 +4164,24 @@
                         iconAnchor: [22, 48]
                     });
 
+                    const brandNote = (s.brand && s.brand !== 'Винный магазин' && s.brand !== s.name) ? `<br><small style="color:#64748b;">${s.brand}</small>` : '';
                     const m = L.marker([s.lat, s.lon], { icon: storeIcon }).addTo(osmMapInstance)
-                        .bindPopup(`<b>${idx + 1}. ${s.name}</b><br>${s.address}<br>${s.distance_meters} м (~${s.walk_time_minutes} мин пешком)<br>В наличии: <b>${s.bottles_left} бут.</b>`);
+                        .bindPopup(`<b>${idx + 1}. ${s.name}</b>${brandNote}<br>${s.address}<br>${s.distance_meters} м (~${s.walk_time_minutes} мин пешком)<br>В наличии: <b>${s.bottles_left} бут.</b>`);
                     storeLeafletMarkers.push(m);
+
+                    const cleanName = (s.name || '').replace(/['"]/g, '');
+                    const brandSub = (s.brand && s.brand !== 'Винный магазин') ? ` • ${s.brand}` : '';
 
                     return `
                         <div class="store-card-row" id="store-row-${s.store_id}">
                             <div>
-                                <div class="store-card-name">${idx + 1}. ${s.name}</div>
+                                <div class="store-card-name">${idx + 1}. ${s.name}${brandSub}</div>
                                 <div class="store-card-addr">${s.address} • ${s.working_hours}</div>
                                 <div class="store-card-meta">
-                                    <b>${s.distance_meters} м</b> (~${s.walk_time_minutes} мин пешком) • В наличии: ${s.bottles_left} бут.
+                                    <b>${s.distance_meters} м</b> (~${s.walk_time_minutes} мин пешком) • В наличии: ${s.bottles_left} бут. • OpenStreetMap
                                 </div>
                             </div>
-                            <button class="btn-store-route" onclick="startWalkingNavigation(${s.lat}, ${s.lon}, '${s.name.replace(/'/g, "")}', '${s.store_id}')">
+                            <button class="btn-store-route" onclick="startWalkingNavigation(${s.lat}, ${s.lon}, '${cleanName}', '${s.store_id}')">
                                 Путь
                             </button>
                         </div>

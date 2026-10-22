@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional, Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -437,7 +438,7 @@ async def get_nearby_stores_endpoint(
         price = int(w.get("price") or 990)
         wine_name = w.get("name")
 
-    stores = get_5_nearest_walking_stores(user_lat=lat, user_lon=lon, wine_slug=wine_slug, base_price=price)
+    stores = await asyncio.to_thread(get_5_nearest_walking_stores, user_lat=lat, user_lon=lon, wine_slug=wine_slug, base_price=price)
     return {
         "user_location": {"lat": lat, "lon": lon},
         "selected_wine_slug": wine_slug,
