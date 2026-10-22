@@ -44,8 +44,9 @@ class Sommelier:
     def reset(self):
         self.ctx = Context()
         self.last = None
+        self.active_wine_slug = None
 
-    def ask(self, text):
+    def ask(self, text, wine_slug=None):
         code = guardrails.check(text)
         if code:
             return dict(kind="guardrail", code=code, text=guardrails.MESSAGES[code])
@@ -53,6 +54,99 @@ class Sommelier:
         fb = self._feedback(t, text)
         if fb:
             return fb
+
+        # Сохраняем активный контекст вина для сессии
+        if wine_slug and wine_slug not in ("main-home", "all"):
+            self.active_wine_slug = wine_slug
+        slug = getattr(self, "active_wine_slug", None)
+
+        from .gastronomy import (
+            find_analogs_in_catalog,
+            find_wine_in_catalog,
+            is_analogs_query,
+            is_food_pairing_query,
+            is_taste_profile_query,
+            render_analogs_answer,
+            render_food_pairing_answer,
+            render_taste_profile_answer,
+        )
+
+        # 1. Запрос на гастропары / блюда / кухни к вину («К какому блюду подходит это вино?»)
+        if is_food_pairing_query(text):
+            target_wine = (
+                find_wine_in_catalog(self.engine.by_id, self.wines, slug)
+                or self._find_wine(text)
+                or find_wine_in_catalog(self.engine.by_id, self.wines, text)
+            )
+            if target_wine:
+                t_slug = slug or target_wine.get("id") or ""
+                self.active_wine_slug = t_slug
+                text_out = render_food_pairing_answer(target_wine, t_slug)
+                return dict(
+                    kind="answer",
+                    text=text_out,
+                    picks=[],
+                    types=[],
+                    pool=len(self.wines),
+                    total=len(self.wines),
+                    note="Гастрономические сочетания сомелье VINA",
+                )
+            return dict(
+                kind="clarify",
+                text="Пожалуйста, укажите название вина или откройте его карточку в каталоге, и я подробно опишу подходящую кухню, конкретные блюда и химическое обоснование вкуса.",
+            )
+
+        # 2. Запрос на вкусовой профиль вина (кислотность, танины, тело)
+        if is_taste_profile_query(text):
+            target_wine = (
+                find_wine_in_catalog(self.engine.by_id, self.wines, slug)
+                or self._find_wine(text)
+                or find_wine_in_catalog(self.engine.by_id, self.wines, text)
+            )
+            if target_wine:
+                t_slug = slug or target_wine.get("id") or ""
+                self.active_wine_slug = t_slug
+                text_out = render_taste_profile_answer(target_wine, t_slug)
+                return dict(
+                    kind="answer",
+                    text=text_out,
+                    picks=[],
+                    types=[],
+                    pool=len(self.wines),
+                    total=len(self.wines),
+                    note="Органолептический профиль вина VINA",
+                )
+            return dict(
+                kind="clarify",
+                text="Пожалуйста, укажите название вина, и я разложу его баланс: кислотность, танины, тело и дегустационные ноты.",
+            )
+
+        # 3. Запрос на поиск аналогов
+        if is_analogs_query(text):
+            target_wine = (
+                find_wine_in_catalog(self.engine.by_id, self.wines, slug)
+                or self._find_wine(text)
+                or find_wine_in_catalog(self.engine.by_id, self.wines, text)
+            )
+            if target_wine:
+                t_slug = slug or target_wine.get("id") or ""
+                self.active_wine_slug = t_slug
+                alts = find_analogs_in_catalog(target_wine, self.wines, top_k=3)
+                text_out, picks = render_analogs_answer(target_wine, alts)
+                return dict(
+                    kind="recommendation",
+                    text=text_out,
+                    picks=picks,
+                    types=[],
+                    pool=len(self.wines),
+                    total=len(self.wines),
+                    note="Близкие аналоги из каталога VINA",
+                )
+            return dict(
+                kind="clarify",
+                text="Укажите вино, к которому нужно подобрать похожие российские аналоги по вкусу и стилю.",
+            )
+
         if re.search(r"этикетк|распознан|на фото|по фото", t) and self._find_wine(text):
             return self.about_wine(text, self._dish_from(text))
         grapes = self.parser.grapes_in(t)
@@ -78,8 +172,7 @@ class Sommelier:
                 if reply:
                     return dict(kind="answer", text=reply + "\n\n" + guardrails.INFO_FOOTER)
             if self.ctx.dish is None:
-                return dict(kind="clarify", text="Уточните, пожалуйста: к какому блюду или по какому поводу подбираем "
-                            "и есть ли пожелания (цвет, сухое/сладкое, что не любите)? Также могу объяснить разницу между сортами.")
+                return dict(kind="clarify", text="Назовите блюдо или повод (например: стейк, паста, сырная тарелка), либо выберите вино из каталога, и я подробно расскажу о его вкусе и идеальных гастропарах.")
         self.ctx.merge(new)
         ctx = self.ctx
         rec = self.engine.recommend(ctx, k)

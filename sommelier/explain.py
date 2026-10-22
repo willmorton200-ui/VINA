@@ -182,13 +182,13 @@ def render_recommendation(rec, ctx, type_rows, level):
     """Готовый текст ответа (без LLM). LLM-слой может переписать его, но опирается на те же факты."""
     L = []
     if ctx.dish:
-        L.append(f"Разобрал блюдо: {describe_axes(ctx.dish)}.")
+        L.append(f"Профиль блюда: {describe_axes(ctx.dish)}.")
     if not rec["picks"]:
         L.append(f"По вашим условиям в каталоге ({rec['total']} вин) не осталось подходящих. "
                  f"Что отсеялось: {', '.join(f'{k} — {v}' for k, v in list(rec['dropped'].items())[:4])}. "
                  "Можно смягчить одно из условий (цвет, сладость, сорт).")
         return "\n".join(L)
-    L.append(f"Из {rec['total']} вин каталога после ваших ограничений осталось {rec['pool_size']}. Три варианта разных стилей:")
+    L.append(f"Подобрал {len(rec['picks'])} гармоничных российских вина к этому блюду:")
     for i, r in enumerate(rec["picks"], 1):
         w = r["wine"]
         pros, cons = explain_pick(r, ctx, level)

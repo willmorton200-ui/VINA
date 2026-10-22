@@ -418,7 +418,7 @@ class Engine:
         gs = self.grapes_of(w)
         freq = max((self.grape_count[g] for g in gs), default=0)
         if i == 0:
-            return "Лучшее совпадение по правилам"
+            return "Идеальная гастропара"
         if gs and freq <= self.rare_threshold:
             return "Нестандартный выбор (редкий сорт в каталоге)"
         if gs and freq >= self.classic_threshold:

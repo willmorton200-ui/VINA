@@ -60,7 +60,7 @@ async def ask(payload: SommelierAskRequest, request: Request) -> SommelierAskRes
     if not query:
         raise HTTPException(status_code=422, detail="Поле 'message' или 'text' обязательно")
 
-    result = await run_in_threadpool(sommelier.ask, query)
+    result = await run_in_threadpool(sommelier.ask, query, payload.wine_slug)
     picks = result.get("picks", [])
 
     # Разрешение изображений бутылок из каталога VINA
