@@ -322,8 +322,10 @@ async def eval_predict(image: UploadFile = File(...)):
             final_conf = round(best["IF"], 2)
             is_in_catalog = final_conf >= CONFIDENCE_THRESHOLD
 
+            req_id = None
             if not is_in_catalog:
-                log_missing_wine(source="scanner", query_text=ocr_text, img_bgr=img_bgr, confidence=final_conf)
+                miss_res = log_missing_wine(source="scanner", query_text=ocr_text, img_bgr=img_bgr, confidence=final_conf)
+                req_id = miss_res.get("id")
 
             return {
                 "slug": best_slug if is_in_catalog else None,
@@ -339,6 +341,7 @@ async def eval_predict(image: UploadFile = File(...)):
                 "candidates": candidates,
                 "status": "found" if is_in_catalog else "not_in_catalog",
                 "message": "" if is_in_catalog else USER_FRIENDLY_MESSAGE,
+                "req_id": req_id,
                 "engine": "hybrid_v2 (SigLIP2 + DINOv2-LoRA + OCR Formula)",
                 "total_time_ms": round((time.time() - t0) * 1000, 1),
             }
@@ -401,12 +404,28 @@ async def get_missing_wine_image(filename: str):
     return FileResponse(str(img_path))
 
 class MissingWineReportRequest(BaseModel):
-    source: str = "catalog_search"
+    source: str = "scanner"
     query_text: str = ""
+    req_id: str | None = None
+    image_base64: str | None = None
 
 @app.post("/api/missing-wines/report")
 async def report_missing_wine(req: MissingWineReportRequest):
-    res = log_missing_wine(source=req.source, query_text=req.query_text)
+    if req.req_id:
+        update_request_status(req.req_id, "user_requested_addition", "Пользователь подтвердил отправку разработчикам")
+        return {"success": True, "id": req.req_id, "message": "Запрос подтвержден и отправлен разработчикам"}
+
+    img_bgr = None
+    if req.image_base64 and "," in req.image_base64:
+        try:
+            b64_str = req.image_base64.split(",", 1)[1]
+            raw_bytes = base64.b64decode(b64_str)
+            nparr = np.frombuffer(raw_bytes, np.uint8)
+            img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        except Exception as e:
+            print(f"[missing_wines] Error decoding image_base64: {e}")
+
+    res = log_missing_wine(source=req.source, query_text=req.query_text, img_bgr=img_bgr)
     return res
 
 @app.get("/api/admin/dashboard/missing-wines")

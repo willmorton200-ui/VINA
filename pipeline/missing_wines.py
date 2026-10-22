@@ -23,7 +23,7 @@ DB_FILE = DATA_DIR / "missing_wines.json"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-USER_FRIENDLY_MESSAGE = "Данного вина пока нет в каталоге, скоро появится, спасибо за проявленный интерес."
+USER_FRIENDLY_MESSAGE = "Данного вина нет в базе, отправить разработчику для добавления в базу?"
 
 
 def _read_db() -> List[Dict[str, Any]]:

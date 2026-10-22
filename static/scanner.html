@@ -33,6 +33,27 @@
             const detailView = document.getElementById('catalog-detail-view');
             const originalView = document.getElementById('original-view');
             if (detailView) detailView.style.display = 'none';
+
+            // Гарантируем загрузку исходного фото пользователя
+            const photoUrl = window.currentUploadedImageURL || window.lastScannedPhotoDataUrl || sessionStorage.getItem('vina_last_scanned_photo') || '';
+            const origImg = document.getElementById('original-img');
+            if (origImg && photoUrl) {
+                origImg.src = photoUrl;
+            }
+
+            // Наполняем эталон каталога для сравнения
+            const refImg = document.getElementById('original-catalog-ref-img');
+            const slug = window.currentDetailWineSlug || window.lastScannedSlug || '';
+            if (refImg && slug) {
+                const apiBase = (typeof getHubApiBase === 'function') ? getHubApiBase() : (typeof apiUrl === 'function' ? apiUrl('') : '');
+                refImg.src = `${apiBase}/api/image/${slug}`;
+            }
+
+            const titleEl = document.getElementById('original-wine-name');
+            const wineryEl = document.getElementById('original-wine-winery');
+            if (titleEl) titleEl.textContent = document.getElementById('detail-wine-title')?.textContent || 'Найденное вино';
+            if (wineryEl) wineryEl.textContent = document.getElementById('detail-wine-winery')?.textContent || '';
+
             switchHubTab('scanner');
             if (typeof window.showView === 'function') {
                 window.showView(originalView);
@@ -43,10 +64,29 @@
         }
 
         function backToWineDetailFromOriginalPhoto() {
-            if (window.currentDetailWineSlug) {
-                openWineDetail(window.currentDetailWineSlug, 'scanner');
+            const slug = window.currentDetailWineSlug || window.lastScannedSlug || '';
+            if (slug && typeof window.openWineDetail === 'function') {
+                window.openWineDetail(slug, 'scanner');
             } else {
                 switchHubTab('scanner');
+            }
+        }
+
+        function reportIncorrectMatchPrompt() {
+            if (confirm("Сообщить разработчикам, что это другое вино, для уточнения базы?")) {
+                const photoUrl = window.currentUploadedImageURL || window.lastScannedPhotoDataUrl || sessionStorage.getItem('vina_last_scanned_photo') || '';
+                const slug = window.currentDetailWineSlug || window.lastScannedSlug || '';
+                const apiBase = (typeof getHubApiBase === 'function') ? getHubApiBase() : (typeof apiUrl === 'function' ? apiUrl('') : '');
+                fetch(`${apiBase}/api/missing-wines/report`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source: 'scanner_incorrect_match',
+                        query_text: `Пользователь отметил неверное распознавание вина (система определила: ${slug})`,
+                        image_base64: (photoUrl && photoUrl.startsWith('data:')) ? photoUrl : undefined
+                    })
+                }).catch(e => console.warn(e));
+                alert("Спасибо! Снимок передан разработчикам для калибровки распознавания.");
             }
         }
 
@@ -1213,20 +1253,66 @@
                 </div>
             </main>
 
-            <!-- Original Photo View -->
-            <main id="original-view" class="view" style="padding: 16px 20px 30px 20px;">
-                <div class="result-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                    <button class="btn-back" id="btn-back-to-result" onclick="backToWineDetailFromOriginalPhoto()" style="margin-bottom: 0;">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <!-- Original Photo & Comparison View -->
+            <main id="original-view" class="view" style="padding: 14px 16px 36px 16px; max-width: 480px; margin: 0 auto;">
+                <div class="result-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <button class="btn-back" id="btn-back-to-result" onclick="backToWineDetailFromOriginalPhoto()" style="margin-bottom: 0; background: #ffffff; border: 1px solid #dee2e6; border-radius: 10px; padding: 7px 12px; font-size: 13px; font-weight: 600; color: #1a1a1a; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M15 18l-6-6 6-6" />
                         </svg>
                         Назад к вину
                     </button>
+                    <span style="font-size: 13.5px; font-weight: 700; color: #722F37;">Сравнение этикеток</span>
                 </div>
-                <div class="wine-card" style="padding: 12px; text-align: center;">
-                    <div class="wine-image-container" style="max-height: 70vh; display: flex; align-items: center; justify-content: center;">
-                        <img id="original-img" src="" alt="Original Photo" style="cursor: zoom-in; max-height: 65vh; border-radius: 12px; object-fit: contain;">
+
+                <!-- Карточка сводки найденного вина -->
+                <div id="comparison-wine-summary" style="background: #ffffff; border: 1px solid #e9ecef; border-radius: 14px; padding: 10px 14px; margin-bottom: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); display: flex; align-items: center; justify-content: space-between;">
+                    <div style="flex: 1; padding-right: 10px;">
+                        <div id="original-wine-name" style="font-size: 13.5px; font-weight: 700; color: #1a1a1a; line-height: 1.3;">Найденное вино</div>
+                        <div id="original-wine-winery" style="font-size: 12px; color: #6c757d; margin-top: 2px;">Винодельня</div>
                     </div>
+                    <div id="original-wine-badge" style="background: #e8f5e9; color: #2e7d32; font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 12px; border: 1px solid #c8e6c9; white-space: nowrap;">
+                        Распознано
+                    </div>
+                </div>
+
+                <!-- Блок сравнения двух изображений: Ваше фото vs Каталог -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px;">
+                    <!-- Карточка 1: Ваше фото -->
+                    <div class="wine-card" style="padding: 10px; text-align: center; margin: 0; display: flex; flex-direction: column; background: #fff; border: 1px solid #e9ecef; border-radius: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+                        <div style="font-size: 11.5px; font-weight: 700; color: #722F37; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+                            Ваш снимок
+                        </div>
+                        <div class="wine-image-container" style="flex: 1; min-height: 220px; max-height: 48vh; display: flex; align-items: center; justify-content: center; background: #f8f9fa; border-radius: 10px; overflow: hidden; position: relative;">
+                            <img id="original-img" src="" alt="Ваш снимок с камеры" style="cursor: zoom-in; max-width: 100%; max-height: 46vh; object-fit: contain; border-radius: 8px;" onclick="if(this.src) openLightbox(this.src, 'Ваш снимок с камеры')">
+                        </div>
+                        <div style="font-size: 10.5px; color: #868e96; margin-top: 6px;">
+                            Нажмите для зума
+                        </div>
+                    </div>
+
+                    <!-- Карточка 2: Эталон из каталога -->
+                    <div class="wine-card" style="padding: 10px; text-align: center; margin: 0; display: flex; flex-direction: column; background: #fff; border: 1px solid #e9ecef; border-radius: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+                        <div style="font-size: 11.5px; font-weight: 700; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+                            Эталон базы
+                        </div>
+                        <div class="wine-image-container" style="flex: 1; min-height: 220px; max-height: 48vh; display: flex; align-items: center; justify-content: center; background: #f8f9fa; border-radius: 10px; overflow: hidden; position: relative;">
+                            <img id="original-catalog-ref-img" src="" alt="Эталонная бутылка из базы" style="cursor: zoom-in; max-width: 100%; max-height: 46vh; object-fit: contain; border-radius: 8px;" onclick="if(this.src) openLightbox(this.src, 'Эталонная бутылка из базы VINA')">
+                        </div>
+                        <div style="font-size: 10.5px; color: #868e96; margin-top: 6px;">
+                            Фото из каталога
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Кнопки внизу -->
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" class="btn btn-primary" onclick="backToWineDetailFromOriginalPhoto()" style="flex: 1; padding: 12px; font-size: 13.5px; font-weight: 600; border-radius: 12px; background: #722F37; color: #fff; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                        <span>Вернуться к карточке</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="reportIncorrectMatchPrompt()" style="padding: 12px 14px; font-size: 12.5px; font-weight: 600; border-radius: 12px; background: #ffffff; color: #495057; border: 1px solid #ced4da; cursor: pointer; white-space: nowrap;">
+                        Это другое вино?
+                    </button>
                 </div>
             </main>
         </div>
@@ -1900,24 +1986,49 @@
 
     <!-- МОДАЛЬНОЕ ОКНО: ВИНО НЕ НАЙДЕНО В КАТАЛОГЕ (ЛОГГИРОВАНИЕ И УВЕДОМЛЕНИЕ) -->
     <div class="missing-wine-modal-overlay" id="missing-wine-modal" onclick="if(event.target.id==='missing-wine-modal') closeMissingWineModal()">
-        <div class="missing-wine-modal-card">
-            <div class="missing-wine-icon-wrap">
-                <img src="svg/public-rating.svg" class="missing-wine-icon-img" alt="" style="width: 32px; height: 32px; object-fit: contain;">
+        <div class="missing-wine-modal-card" style="padding: 20px 18px; max-width: 400px;">
+            <!-- Превью сделанной фотографии -->
+            <div id="missing-wine-photo-box" style="position: relative; width: 100%; max-height: 220px; border-radius: 14px; overflow: hidden; background: #f8f9fa; border: 1px solid #dee2e6; margin-bottom: 14px; display: flex; align-items: center; justify-content: center;">
+                <img id="missing-wine-photo-preview" src="" alt="Ваш снимок вина" style="max-height: 220px; max-width: 100%; object-fit: contain; cursor: zoom-in;" onclick="if(this.src) openLightbox(this.src, 'Ваш снимок вина')">
+                <div style="position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.65); color: #fff; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; backdrop-filter: blur(4px);">
+                    Ваш снимок
+                </div>
             </div>
-            <h3 class="missing-wine-title">Вино не найдено</h3>
-            <p class="missing-wine-text" id="missing-wine-message">
-                Данного вина пока нет в каталоге, скоро появится, спасибо за проявленный интерес.
+
+            <!-- Точный текст уведомления по запросу Алексея -->
+            <h3 class="missing-wine-title" style="font-size: 16px; font-weight: 700; color: #1a1a1a; margin: 0 0 8px 0; line-height: 1.35;">
+                Данного вина нет в базе, отправить разработчику для добавления в базу?
+            </h3>
+            <p class="missing-wine-subtext" style="font-size: 12px; color: #6c757d; margin: 0 0 16px 0; line-height: 1.45;">
+                Разработчики получат снимок этикетки, распознают сорт и винодельню и внесут карточку в каталог VINA.
             </p>
-            <div class="missing-wine-subtext">
-                Фотография этикетки и запрос автоматически сохранены и переданы администрации сервиса. Эксперты внесут карточку в базу в ближайшее обновление.
-            </div>
-            <div style="display: flex; gap: 10px; margin-top: 18px;">
-                <button class="btn btn-secondary" onclick="closeMissingWineModal()" style="flex: 1; border-radius: 12px; padding: 12px; font-weight: 600; border: 1px solid #ced4da;">
-                    Понятно
+
+            <!-- Кнопки действий -->
+            <div id="missing-wine-actions" style="display: flex; flex-direction: column; gap: 8px;">
+                <button id="btn-submit-missing-wine" type="button" class="btn btn-primary" onclick="submitMissingWineToDevs()" style="width: 100%; border-radius: 12px; padding: 13px; font-weight: 700; font-size: 14px; background: #722F37; color: #ffffff; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 8px rgba(114,47,55,0.25);">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                    <span>Отправить разработчику</span>
                 </button>
-                <button class="btn btn-primary" onclick="openSommelierFromMissingWine()" style="flex: 1.4; border-radius: 12px; padding: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                    <img src="svg/public-rating.svg" class="badge-icon-glass-mini" style="width: 18px; height: 18px; object-fit: contain; filter: brightness(0) invert(1);" alt="">
-                    <span>Спросить сомелье</span>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeMissingWineModal()" style="flex: 1; border-radius: 12px; padding: 11px; font-weight: 600; font-size: 13px; border: 1px solid #ced4da; background: #fff; color: #495057; cursor: pointer;">
+                        Отмена
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="openSommelierFromMissingWine()" style="flex: 1.2; border-radius: 12px; padding: 11px; font-weight: 600; font-size: 13px; border: 1px solid #f8d7da; background: #fdf2f4; color: #722F37; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                        <img src="svg/public-rating.svg" style="width: 16px; height: 16px; object-fit: contain;">
+                        <span>Спросить сомелье</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Состояние успешной отправки -->
+            <div id="missing-wine-success" style="display: none; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 12px; padding: 14px; text-align: center; color: #2e7d32;">
+                <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px;">✓ Отправлено разработчикам!</div>
+                <div style="font-size: 12px; color: #388e3c; margin-bottom: 12px;">Спасибо! Снимок передан команде разработки. Мы внесем карточку в каталог.</div>
+                <button type="button" class="btn btn-primary" onclick="closeMissingWineModal()" style="border-radius: 10px; padding: 9px 18px; font-size: 13px; font-weight: 600; background: #2e7d32; color: #fff; border: none; cursor: pointer;">
+                    Сделать новый снимок
                 </button>
             </div>
         </div>
@@ -4646,9 +4757,8 @@
                 else backTxt.textContent = 'Назад в каталог';
             }
             if (origPhotoBtn) {
-                const origImg = document.getElementById('original-img');
-                const hasPhoto = (origImg && origImg.src && origImg.src.length > 5 && !origImg.src.endsWith('/'));
-                origPhotoBtn.style.display = (source === 'scanner' && hasPhoto) ? 'inline-flex' : 'none';
+                const hasPhoto = !!(window.currentUploadedImageURL || window.lastScannedPhotoDataUrl || sessionStorage.getItem('vina_last_scanned_photo'));
+                origPhotoBtn.style.display = (source === 'scanner' || hasPhoto) ? 'inline-flex' : 'none';
             }
 
             // Переключаем закладку на каталог чтобы видеть форму вина
@@ -5063,14 +5173,66 @@
         // =====================================================================
         function showMissingWineModal(msg) {
             const modal = document.getElementById('missing-wine-modal');
-            const msgEl = document.getElementById('missing-wine-message');
-            if (msgEl && msg) msgEl.textContent = msg;
+            const photoEl = document.getElementById('missing-wine-photo-preview');
+            const photoUrl = window.currentUploadedImageURL || window.lastScannedPhotoDataUrl || sessionStorage.getItem('vina_last_scanned_photo') || '';
+            if (photoEl) {
+                if (photoUrl) {
+                    photoEl.src = photoUrl;
+                    if (photoEl.parentElement) photoEl.parentElement.style.display = 'flex';
+                } else if (photoEl.parentElement) {
+                    photoEl.parentElement.style.display = 'none';
+                }
+            }
+            const actions = document.getElementById('missing-wine-actions');
+            const success = document.getElementById('missing-wine-success');
+            const btn = document.getElementById('btn-submit-missing-wine');
+            if (actions) actions.style.display = 'flex';
+            if (success) success.style.display = 'none';
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg><span>Отправить разработчику</span>`;
+            }
             if (modal) modal.style.display = 'flex';
         }
 
         function closeMissingWineModal() {
             const modal = document.getElementById('missing-wine-modal');
             if (modal) modal.style.display = 'none';
+            if (typeof window.showView === 'function' && window.scannerView) {
+                window.showView(window.scannerView);
+            }
+        }
+
+        async function submitMissingWineToDevs() {
+            const btn = document.getElementById('btn-submit-missing-wine');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="somm-spinner" style="border-top-color:#fff;"></span> Отправка...';
+            }
+            const photoUrl = window.currentUploadedImageURL || window.lastScannedPhotoDataUrl || sessionStorage.getItem('vina_last_scanned_photo') || '';
+            const reqId = window.lastMissingReqId || null;
+            const ocr = window.lastScannedOcrText || '';
+
+            try {
+                const apiBase = (typeof getHubApiBase === 'function') ? getHubApiBase() : (typeof apiUrl === 'function' ? apiUrl('') : '');
+                await fetch(`${apiBase}/api/missing-wines/report`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source: 'scanner',
+                        query_text: ocr ? `OCR: ${ocr}` : 'Запрос на добавление вина через сканер',
+                        req_id: reqId,
+                        image_base64: (photoUrl && photoUrl.startsWith('data:')) ? photoUrl : undefined
+                    })
+                });
+            } catch (e) {
+                console.warn('submitMissingWine error:', e);
+            }
+
+            const actions = document.getElementById('missing-wine-actions');
+            const success = document.getElementById('missing-wine-success');
+            if (actions) actions.style.display = 'none';
+            if (success) success.style.display = 'block';
         }
 
         async function logMissingWineQuery(q) {
