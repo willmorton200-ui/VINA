@@ -93,7 +93,7 @@ class WinePairingRecommendation(BaseModel):
 class WineAnalogCard(BaseModel):
     """Карточка вина-аналога."""
     analog_type: str = Field(..., description="style_twin | smart_value | upgrade")
-    badge_label: str = Field(..., description="🎯 Близнец по вкусу | 💎 Выгодная альтернатива | 👑 На ступень выше")
+    badge_label: str = Field(..., description="Близнец по вкусу | Выгодная альтернатива | На ступень выше")
     wine_slug: str
     wine_name: str
     price_rub: Optional[float] = None
@@ -155,7 +155,7 @@ DEFAULT_DISHES_DB: List[DishProfile] = [
         title="Стейк Рибай Prime на углях с тающим маслом",
         subtitle="Сочная мраморная говядина прожарки Medium Rare с хрустящей корочкой, на которой медленно тает сливочное масло с чесноком и свежим тимьяном.",
         category="Мясо",
-        sensory_tags=["🔥 Дым и угли", "🥩 Сочная мраморность", "🧈 Тающее травяное масло"],
+        sensory_tags=["Дым и угли", "Сочная мраморность", "Тающее травяное масло"],
         image_url="/static/images/dishes/ribeye_steak.webp",
         flux_prompt="Macro food photography of pan-seared ribeye steak medium rare, melting garlic herb butter on top, charred crust, glistening meat juices, dark slate plate, blurred red wine glass in background, warm dramatic lighting, 85mm f/1.8",
         fat=4.6, protein=4.8, acidity=1.8, spiciness=2.0, weight=4.8, sweetness=1.2, is_oily_fish=False
@@ -165,7 +165,7 @@ DEFAULT_DISHES_DB: List[DishProfile] = [
         title="Утиная грудка Магре с вишнево-винным демигласом",
         subtitle="Утиное филе с золотистой хрустящей кожей, нежной розовой серединой и густым глянцевым соусом из темной вишни, портвейна и черного перца.",
         category="Птица",
-        sensory_tags=["🍒 Кисло-сладкая вишня", "🦆 Хрустящая корочка", "🍷 Глянцевый демиглас"],
+        sensory_tags=["Кисло-сладкая вишня", "Хрустящая корочка", "🍷 Глянцевый демиглас"],
         image_url="/static/images/dishes/duck_cherry.webp",
         flux_prompt="Macro food photography of sliced duck breast magret with crispy golden skin, pink center, glossy dark cherry red wine reduction sauce drizzled over, dark moody restaurant table, 85mm lens",
         fat=4.0, protein=4.0, acidity=3.6, spiciness=2.2, weight=3.9, sweetness=2.4, is_oily_fish=False
@@ -175,7 +175,7 @@ DEFAULT_DISHES_DB: List[DishProfile] = [
         title="Морские гребешки в цитрусовом соусе Бёр-Блан",
         subtitle="Обжаренные до карамельной корочки сахалинские гребешки в воздушной эмульсии из охлажденного сливочного масла, белого вина и сока лайма.",
         category="Морепродукты",
-        sensory_tags=["🍋 Звонкий лайм", "🐚 Нежная текстура", "🧈 Сливочная эмульсия"],
+        sensory_tags=["Звонкий лайм", "Нежная текстура", "Сливочная эмульсия"],
         image_url="/static/images/dishes/scallops_citrus.webp",
         flux_prompt="Macro food photography of pan-seared golden sea scallops in creamy citrus beurre blanc sauce with microgreens and lime zest, dark ceramic plate, chilled white wine glass, ultra appetizing",
         fat=3.5, protein=3.2, acidity=4.3, spiciness=1.2, weight=2.6, sweetness=1.8, is_oily_fish=True
@@ -185,7 +185,7 @@ DEFAULT_DISHES_DB: List[DishProfile] = [
         title="Паста Карбонара с хрустящим гуанчале и Пекорино",
         subtitle="Горячие спагетти, окутанные шелковистым соусом из фермерских желтков и выдержанного сыра Пекорино с золотистыми шкварками вяленых щечек и свежемолотым перцем.",
         category="Паста",
-        sensory_tags=["🧀 Сливочный желток и сыр", "🥓 Хрустящий гуанчале", "🌶 Черный перец"],
+        sensory_tags=["Сливочный желток и сыр", "Хрустящий гуанчале", "Черный перец"],
         image_url="/static/images/dishes/carbonara.webp",
         flux_prompt="Macro food photography of authentic Roman pasta carbonara twirled on a fork, glossy egg yolk pecorino emulsion, crispy guanciale cubes, cracked black pepper, steam rising, dark moody lighting",
         fat=4.5, protein=3.4, acidity=1.8, spiciness=2.3, weight=3.8, sweetness=1.3, is_oily_fish=False
@@ -195,7 +195,7 @@ DEFAULT_DISHES_DB: List[DishProfile] = [
         title="Запеченный Камамбер с сотовым медом и пеканом",
         subtitle="Головка фермерского сыра из печи с тягучей сливочной сердцевиной, веточкой запеченного розмарина, тягучим горным медом и карамелизированным орехом пекан.",
         category="Сыры",
-        sensory_tags=["🧀 Тягучая сливочность", "🍯 Горный мед", "🌰 Хрустящий пекан"],
+        sensory_tags=["Тягучая сливочность", "Горный мед", "Хрустящий пекан"],
         image_url="/static/images/dishes/baked_camembert.webp",
         flux_prompt="Macro food photography of oven baked camembert cheese cut open with oozing melted cheese center, drizzled with golden honey, roasted pecans and rosemary sprig, rustic dark wood",
         fat=4.7, protein=3.3, acidity=2.1, spiciness=1.3, weight=3.6, sweetness=2.8, is_oily_fish=False
@@ -205,7 +205,7 @@ DEFAULT_DISHES_DB: List[DishProfile] = [
         title="Пряный лангустин гриль в соусе манго-чили и лемонграсс",
         subtitle="Обжаренные на открытом огне хвосты лангустинов с пикантной глазурью из спелого манго, перца чили, имбиря и сока каффир-лайма.",
         category="Морепродукты",
-        sensory_tags=["🌶 Огненный чили", "🥭 Спелое манго", "🌿 Свежий лемонграсс"],
+        sensory_tags=["Огненный чили", "Спелое манго", "Свежий лемонграсс"],
         image_url="/static/images/dishes/spicy_prawns.webp",
         flux_prompt="Macro food photography of grilled king prawns glazed with glossy mango chili sauce, fresh cilantro, lime wedges and red chili slices, glistening texture, dark slate background",
         fat=2.4, protein=3.5, acidity=3.8, spiciness=4.6, weight=2.7, sweetness=3.1, is_oily_fish=True
@@ -215,7 +215,7 @@ DEFAULT_DISHES_DB: List[DishProfile] = [
         title="Томленая лопатка ягненка с кавказскими травами и гранатом",
         subtitle="Мясо ягненка 6-часового томления, распадающееся на волокна от прикосновения вилки, с густым мясным соком, кинзой, чесноком и рубиновыми зернами граната.",
         category="Мясо",
-        sensory_tags=["🍖 Тающие волокна", "🌿 Пряные травы и чеснок", "💎 Рубиновый гранат"],
+        sensory_tags=["Тающие волокна", "Пряные травы и чеснок", "Рубиновый гранат"],
         image_url="/static/images/dishes/braised_lamb.webp",
         flux_prompt="Macro food photography of slow-braised lamb shoulder falling off the bone, glossy dark jus reduction, ruby pomegranate seeds and fresh herbs, warm moody lighting, 85mm lens",
         fat=4.4, protein=4.6, acidity=2.8, spiciness=3.2, weight=4.6, sweetness=1.8, is_oily_fish=False
@@ -225,7 +225,7 @@ DEFAULT_DISHES_DB: List[DishProfile] = [
         title="Тартар из дикого лосося со спелым авокадо и понзу",
         subtitle="Охлажденные кубики нежного лосося с кремовым муссом из авокадо, кунжутным маслом, каперсами и цитрусово-соевой заправкой понзу.",
         category="Рыба",
-        sensory_tags=["🐟 Нежный лосось", "🥑 Кремовое авокадо", "🍊 Цитрусовый понзу"],
+        sensory_tags=["Нежный лосось", "Кремовое авокадо", "Цитрусовый понзу"],
         image_url="/static/images/dishes/salmon_tartare.webp",
         flux_prompt="Macro food photography of fresh salmon tartare stacked on creamy avocado mousse, glossy citrus ponzu dressing, sesame seeds, micro herbs, fine dining dark plate, chilled rose wine glass",
         fat=3.8, protein=3.6, acidity=3.7, spiciness=1.8, weight=2.5, sweetness=1.6, is_oily_fish=True
@@ -373,7 +373,7 @@ class SommelierPairingEngine:
                 evidence.append(EvidenceCard(
                     rule_id="acid_cuts_fat",
                     badge_title="Кислотность режет жир",
-                    icon="⚡",
+                    icon="",
                     wine_metric_label=f"Кислотность вина: {wine_vec.acidity}/5",
                     dish_metric_label=f"Жирность блюда: {dish.fat}/5",
                     scientific_explanation=(
@@ -389,7 +389,7 @@ class SommelierPairingEngine:
                 evidence.append(EvidenceCard(
                     rule_id="low_acid_vs_fat",
                     badge_title="Нехватка кислотности против жира",
-                    icon="⚠️",
+                    icon="",
                     wine_metric_label=f"Кислотность вина: {wine_vec.acidity}/5",
                     dish_metric_label=f"Жирность блюда: {dish.fat}/5",
                     scientific_explanation=(
@@ -407,7 +407,7 @@ class SommelierPairingEngine:
                 evidence.append(EvidenceCard(
                     rule_id="acid_harmony",
                     badge_title="Гармония с кислым соусом",
-                    icon="🍋",
+                    icon="",
                     wine_metric_label=f"Кислотность вина: {wine_vec.acidity}/5",
                     dish_metric_label=f"Кислотность соуса: {dish.acidity}/5",
                     scientific_explanation=(
@@ -429,7 +429,7 @@ class SommelierPairingEngine:
                 evidence.append(EvidenceCard(
                     rule_id="tannin_protein_lock",
                     badge_title="Танины + Мясной белок",
-                    icon="🥩",
+                    icon="",
                     wine_metric_label=f"Танинность вина: {wine_vec.tannins}/5",
                     dish_metric_label=f"Белок и сочность мяса: {dish.protein}/5",
                     scientific_explanation=(
@@ -449,7 +449,7 @@ class SommelierPairingEngine:
                 evidence.append(EvidenceCard(
                     rule_id="tannin_fish_conflict",
                     badge_title="Конфликт танинов и морепродуктов",
-                    icon="🚫",
+                    icon="",
                     wine_metric_label=f"Танинность вина: {wine_vec.tannins}/5",
                     dish_metric_label="Омега-3 и йод морепродуктов",
                     scientific_explanation=(
@@ -464,7 +464,7 @@ class SommelierPairingEngine:
                 evidence.append(EvidenceCard(
                     rule_id="delicate_seafood_match",
                     badge_title="Чистота морского вкуса",
-                    icon="🐚",
+                    icon="",
                     wine_metric_label=f"Деликатные танины: {wine_vec.tannins}/5",
                     dish_metric_label="Нежный белок морепродуктов",
                     scientific_explanation=(
@@ -482,7 +482,7 @@ class SommelierPairingEngine:
                 evidence.append(EvidenceCard(
                     rule_id="sweet_cools_spice",
                     badge_title="Укрощение огня специй",
-                    icon="🌶️",
+                    icon="",
                     wine_metric_label=f"Сладость/Фруктовость: {wine_vec.sweetness}/5",
                     dish_metric_label=f"Пикантность чили: {dish.spiciness}/5",
                     scientific_explanation=(
@@ -502,7 +502,7 @@ class SommelierPairingEngine:
             evidence.append(EvidenceCard(
                 rule_id="equal_body_weight",
                 badge_title="Баланс плотности и тела",
-                icon="⚖️",
+                icon="",
                 wine_metric_label=f"Тело вина: {wine_vec.body}/5",
                 dish_metric_label=f"Плотность блюда: {dish.weight}/5",
                 scientific_explanation=(
@@ -517,13 +517,13 @@ class SommelierPairingEngine:
         final_score = round(float(np.clip(base_score, 15.0, 99.0)), 1)
 
         if final_score >= 92.0:
-            match_level = "🔥 Идеальная синергия"
+            match_level = "Идеальная синергия"
             verdict = "Безупречный союз: вино и блюдо раскрывают скрытые грани друг друга."
         elif final_score >= 82.0:
             match_level = "✨ Отличная гастропара"
             verdict = "Гармоничное сочетание с ярким балансом кислотности и текстур."
         elif final_score >= 70.0:
-            match_level = "👍 Хороший выбор"
+            match_level = "Хороший выбор"
             verdict = "Приятная повседневная пара без вкусовых конфликтов."
         else:
             match_level = "⚠️ Рискованное сочетание"
@@ -631,9 +631,9 @@ class SommelierPairingEngine:
     ) -> List[WinePairingRecommendation]:
         """
         Подбирает Топ-3 вина из каталога к блюду в 3 номинациях:
-        1) 👑 Классическая гармония
+        1) Классическая гармония
         2) ✨ Смелый гастро-эксперимент
-        3) 💎 Лучшая цена / качество
+        3) Лучшая цена / качество
         """
         candidates = []
         for slug, item in self.catalog.items():
@@ -666,7 +666,7 @@ class SommelierPairingEngine:
         selected.append(self._pack_wine_recommendation(
             best,
             nomination="Классическая гармония",
-            icon="👑",
+            icon="",
             pitch=(
                 f"Эталонное попадание ({best['score']}%): баланс кислотности ({best['vec'].acidity}/5) "
                 f"и тела ({best['vec'].body}/5) идеально ложится на текстуру блюда «{dish.title}»."
@@ -684,7 +684,7 @@ class SommelierPairingEngine:
             selected.append(self._pack_wine_recommendation(
                 best_value,
                 nomination="Умный выбор (Цена / Качество)",
-                icon="💎",
+                icon="",
                 pitch=(
                     f"Дает {best_value['score']}% гастрономической синергии по максимально "
                     f"привлекательной цене ({int(best_value['price'])} ₽)."
@@ -698,7 +698,7 @@ class SommelierPairingEngine:
             selected.append(self._pack_wine_recommendation(
                 exp,
                 nomination="Гастро-открытие сомелье",
-                icon="✨",
+                icon="",
                 pitch=(
                     f"Нетривиальная пара ({exp['score']}%), которая раскроет блюдо с новой стороны "
                     f"за счет игры ароматики и свежей структуры."
@@ -739,8 +739,8 @@ class SommelierPairingEngine:
         """
         Находит 3 лучших аналога вина в каталоге по близости 5D-вектора вкуса:
         1) 🎯 Близнец по стилю (максимальное совпадение кислотности, танинов, тела и сахара)
-        2) 💎 Выгодная альтернатива (близкий профиль, но дешевле)
-        3) 👑 На ступень выше (тот же профиль, но выше рейтинг/выдержка)
+        2) Выгодная альтернатива (близкий профиль, но дешевле)
+        3) На ступень выше (тот же профиль, но выше рейтинг/выдержка)
         """
         if wine_slug not in self.catalog:
             raise KeyError(f"Вино '{wine_slug}' не найдено в каталоге.")
@@ -798,7 +798,7 @@ class SommelierPairingEngine:
             target_price=target_price,
             cand=twin,
             analog_type="style_twin",
-            badge_label="🎯 Близнец по вкусу",
+            badge_label="Близнец по вкусу",
         ))
 
         # 2. Выгодная альтернатива (сходство >= 82% и цена ниже)
@@ -814,7 +814,7 @@ class SommelierPairingEngine:
                 target_price=target_price,
                 cand=smart_val,
                 analog_type="smart_value",
-                badge_label="💎 Выгоднее по цене",
+                badge_label="Выгоднее по цене",
             ))
 
         # 3. Премиум-апгрейд (сходство >= 80% и выше рейтинг или выдержка в дубе)
@@ -832,7 +832,7 @@ class SommelierPairingEngine:
                 target_price=target_price,
                 cand=upg,
                 analog_type="upgrade",
-                badge_label="👑 На ступень выше",
+                badge_label="На ступень выше",
             ))
 
         # Добиваем до 3 карточек, если какой-то спец-номинации не нашлось
@@ -846,7 +846,7 @@ class SommelierPairingEngine:
                     target_price=target_price,
                     cand=c,
                     analog_type="style_twin",
-                    badge_label="🔄 Похожий профиль",
+                    badge_label="Похожий профиль",
                 ))
 
         return analogs

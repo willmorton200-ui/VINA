@@ -845,7 +845,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (chipsWrap && data.best_dishes && data.best_dishes.length > 0) {
                 chipsWrap.innerHTML = data.best_dishes.map(d => `
                     <button type="button" class="btn-pairing" onclick="handleScannerPairingClick('${escapeSommHtml(d.query)}', '${escapeSommHtml(d.label)}')">
-                        🍽 ${escapeSommHtml(d.label)} <span style="font-size: 10px; color: #2e7d32; font-weight: 700; margin-left: 2px;">${Math.round(d.score)}%</span>
+                        ${escapeSommHtml(d.label)} <span style="font-size: 10px; color: #2e7d32; font-weight: 700; margin-left: 2px;">${Math.round(d.score)}%</span>
                     </button>
                 `).join('');
             }
@@ -868,7 +868,7 @@ document.addEventListener('DOMContentLoaded', () => {
         vBox.style.display = 'block';
         vBox.innerHTML = `
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-                <strong style="color: #722F37; font-size: 13.5px;">🍽 ${escapeSommHtml(label)}</strong>
+                <strong style="color: #722F37; font-size: 13.5px;">${escapeSommHtml(label)}</strong>
                 <span class="somm-spinner" style="width: 14px; height: 14px;"></span>
             </div>
             <div style="font-size: 12.5px; color: #6c757d;">Запрашиваем оценку цифрового сомелье...</div>
@@ -893,7 +893,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 vBox.innerHTML = `
                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-                        <strong style="color: #722F37; font-size: 13.5px;">🍽 ${escapeSommHtml(label)}: <span style="color: #1a1a1a;">${escapeSommHtml(verdictTitle)}</span></strong>
+                        <strong style="color: #722F37; font-size: 13.5px;">${escapeSommHtml(label)}: <span style="color: #1a1a1a;">${escapeSommHtml(verdictTitle)}</span></strong>
                         <span style="background: #722F37; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 8px;">${score}%</span>
                     </div>
                     ${factorsHtml}
@@ -906,7 +906,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (data.text) {
                 vBox.innerHTML = `
                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-                        <strong style="color: #722F37; font-size: 13.5px;">🍽 ${escapeSommHtml(label)}</strong>
+                        <strong style="color: #722F37; font-size: 13.5px;">${escapeSommHtml(label)}</strong>
                     </div>
                     <div style="font-size: 12.5px; color: #495057;">${formatSommMarkdown(data.text)}</div>
                 `;
@@ -969,7 +969,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnMap) {
         btnMap.addEventListener('click', () => {
             if (typeof switchHubTab === 'function') switchHubTab('map');
-            else showToast('📍 Переход в раздел «Карта»');
+            else showToast('Переход в раздел «Карта»');
         });
     }
 
@@ -1190,7 +1190,7 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = `
             <div class="dish-wine-logic-box">
                 <div style="font-weight: 700; color: #1a1a1a; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
-                    <img src="img/glass_filled_straight.png" class="badge-icon-glass-mini" alt="">
+                    <img src="svg/public-rating.svg" class="badge-icon-glass-mini" alt="" style="width: 16px; height: 16px; object-fit: contain;">
                     Логика употребления от сомелье VINA
                 </div>
                 <p style="margin: 0; font-size: 13px; line-height: 1.55; color: #495057;">
@@ -1381,7 +1381,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.resetSommChatSession = async function() {
         if (window.sommChatSessionId) {
             try {
-                await fetch('/api/sommelier/reset', {
+                await fetch(apiUrl('/api/sommelier/reset'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ session_id: window.sommChatSessionId })
@@ -1399,16 +1399,16 @@ document.addEventListener('DOMContentLoaded', () => {
             messagesBox.innerHTML = `
                 <div class="somm-msg somm-msg-assistant" style="display: flex; gap: 10px; align-items: flex-start;">
                     <div style="width: 32px; height: 32px; border-radius: 50%; background: #fdf2f4; border: 1px solid #f8d7da; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                        <img src="img/glass_filled_straight.png" style="width: 16px; height: 22px; object-fit: contain;" alt="">
+                        <img src="svg/public-rating.svg" style="width: 18px; height: 18px; object-fit: contain;" alt="">
                     </div>
                     <div style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px 16px 16px 16px; padding: 12px 16px; font-size: 13.5px; line-height: 1.55; color: #212529; max-width: 90%;">
                         <p style="margin: 0 0 8px 0; font-weight: 600; color: #722F37;">Диалог очищен. Чем могу помочь?</p>
                         <p style="margin: 0;">${isHomeOrAll ? 'Задайте любой вопрос по вину: с чем подать, какой у него вкусовой профиль, или попросите подобрать российские аналоги к вашему ужину.' : `Я готов рассказать всё о вине <strong>${escapeSommHtml(title)}</strong>.`}</p>
                         <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;">
-                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('С чем подать это вино?')">🍽 С чем подать?</button>
-                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Опиши вкус, кислотность и танины')">🍷 Профиль вкуса</button>
-                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Подбери 3 похожих российских вина')">🔄 Найти аналоги</button>
-                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Стейк рибай, не люблю дуб')">🥩 Стейк без дуба</button>
+                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('С чем подать это вино?')">С чем подать?</button>
+                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Опиши вкус, кислотность и танины')">Профиль вкуса</button>
+                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Подбери 3 похожих российских вина')">Найти аналоги</button>
+                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Стейк')">Стейк</button>
                         </div>
                     </div>
                 </div>
@@ -1444,7 +1444,7 @@ document.addEventListener('DOMContentLoaded', () => {
         typingEl.style.cssText = 'display: flex; gap: 10px; align-items: center;';
         typingEl.innerHTML = `
             <div style="width: 32px; height: 32px; border-radius: 50%; background: #fdf2f4; border: 1px solid #f8d7da; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                <img src="img/glass_filled_straight.png" style="width: 16px; height: 22px; object-fit: contain;">
+                <img src="svg/public-rating.svg" style="width: 18px; height: 18px; object-fit: contain;">
             </div>
             <div style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px 16px 16px 16px; padding: 8px 14px; font-size: 12.5px; color: #6c757d; display: flex; align-items: center; gap: 8px;">
                 <span class="somm-spinner"></span> Сомелье анализирует реестр 2108 вин...
@@ -1460,7 +1460,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 wine_slug: (window.currentSommelierSlug && window.currentSommelierSlug !== 'main-home' ? window.currentSommelierSlug : null)
             };
 
-            const res = await fetch('/api/sommelier/ask', {
+            const res = await fetch(apiUrl('/api/sommelier/ask'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -1519,7 +1519,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             asstMsg.innerHTML = `
                 <div style="width: 32px; height: 32px; border-radius: 50%; background: #fdf2f4; border: 1px solid #f8d7da; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                    <img src="img/glass_filled_straight.png" style="width: 16px; height: 22px; object-fit: contain;">
+                    <img src="svg/public-rating.svg" style="width: 18px; height: 18px; object-fit: contain;">
                 </div>
                 <div style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px 16px 16px 16px; padding: 12px 16px; font-size: 13.5px; line-height: 1.55; color: #212529; max-width: 90%;">
                     ${formatSommMarkdown(data.text || '')}
@@ -1534,15 +1534,28 @@ document.addEventListener('DOMContentLoaded', () => {
             if (document.getElementById('somm-typing-indicator')) {
                 document.getElementById('somm-typing-indicator').remove();
             }
+            const isRemote = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.port !== '8080';
+            const hasApi = !!localStorage.getItem('vina_api_url');
+            let hint = 'Проверьте соединение и попробуйте еще раз.';
+            let actionBtn = '';
+            if (isRemote && !hasApi) {
+                hint = 'Сайт открыт удаленно, но адрес туннеля не настроен. Запустите start_tunnel.bat на ПК и укажите адрес в настройках.';
+                actionBtn = '<div style="margin-top: 8px;"><button type="button" onclick="if(window.openBridgeSettings) window.openBridgeSettings();" style="background: #722F37; color: #fff; border: none; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;">Настроить подключение</button></div>';
+            } else if (isRemote) {
+                hint = 'Не удалось связаться с домашним сервером через туннель. Проверьте, запущены ли start_app.bat и start_tunnel.bat на вашем ПК.';
+                actionBtn = '<div style="margin-top: 8px;"><button type="button" onclick="if(window.openBridgeSettings) window.openBridgeSettings();" style="background: #722F37; color: #fff; border: none; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;">Проверить адрес туннеля</button></div>';
+            }
             const errEl = document.createElement('div');
             errEl.className = 'somm-msg somm-msg-assistant';
             errEl.style.cssText = 'display: flex; gap: 10px; align-items: flex-start;';
             errEl.innerHTML = `
                 <div style="width: 32px; height: 32px; border-radius: 50%; background: #fdf2f4; border: 1px solid #f8d7da; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                    <img src="img/glass_filled_straight.png" style="width: 16px; height: 22px; object-fit: contain;">
+                    <img src="svg/public-rating.svg" style="width: 18px; height: 18px; object-fit: contain;">
                 </div>
-                <div style="background: #fff5f5; border: 1px solid #fed7d7; border-radius: 4px 16px 16px 16px; padding: 12px 16px; font-size: 13px; color: #c53030;">
-                    Не удалось получить ответ от сомелье. Проверьте соединение и попробуйте еще раз.
+                <div style="background: #fff5f5; border: 1px solid #fed7d7; border-radius: 4px 16px 16px 16px; padding: 12px 16px; font-size: 13px; color: #c53030; max-width: 90%;">
+                    <div style="font-weight: 700; margin-bottom: 4px;">Не удалось получить ответ от сомелье</div>
+                    <div style="line-height: 1.45;">${hint}</div>
+                    ${actionBtn}
                 </div>
             `;
             messagesBox.appendChild(errEl);
@@ -1576,7 +1589,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const isAnalog = dish.toLowerCase().includes('аналог') || dish.toLowerCase().includes('замена');
-            const res = await fetch('/api/sommelier/pairing/dish', {
+            const res = await fetch(apiUrl('/api/sommelier/pairing/dish'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1593,7 +1606,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const dp = data.dish_profile;
                 profileHtml = `
                     <div style="background: #fdf2f4; border: 1px solid #f8d7da; border-radius: 12px; padding: 10px 14px; margin-bottom: 12px;">
-                        <div style="font-size: 13px; font-weight: 700; color: #722F37;">🍽 Блюдо: ${escapeSommHtml(dp.dish || dish)}</div>
+                        <div style="font-size: 13px; font-weight: 700; color: #722F37;">Блюдо: ${escapeSommHtml(dp.dish || dish)}</div>
                         <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
                             ${dp.weight ? `<span style="background: #ffffff; border: 1px solid #f8d7da; padding: 2px 7px; border-radius: 8px; font-size: 11px; color: #495057;">Вес: ${escapeSommHtml(dp.weight)}</span>` : ''}
                             ${dp.fat ? `<span style="background: #ffffff; border: 1px solid #f8d7da; padding: 2px 7px; border-radius: 8px; font-size: 11px; color: #495057;">Жирность: ${escapeSommHtml(dp.fat)}</span>` : ''}
@@ -1678,7 +1691,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         try {
-            const res = await fetch('/api/v2/sommelier/ask', {
+            const res = await fetch(apiUrl('/api/v2/sommelier/ask'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ occasion: occasion, wine_slug: slug })
@@ -1694,7 +1707,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 toastHtml = `
                     <div class="somm-quote-card">
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                            <div style="font-weight: 700; color: #856404; font-size: 14px;">${escapeSommHtml(t.toast_title || '🥂 Авторский тост')}</div>
+                            <div style="font-weight: 700; color: #856404; font-size: 14px;">${escapeSommHtml(t.toast_title || 'Авторский тост')}</div>
                             <button type="button" id="btn-copy-toast" onclick="navigator.clipboard.writeText('${safeToastText}'); this.textContent='✓ Скопировано!'; setTimeout(()=>this.textContent='Скопировать', 2000);" style="background: #ffffff; border: 1px solid #eedcba; border-radius: 6px; padding: 3px 8px; font-size: 11px; cursor: pointer; color: #856404; font-weight: 600;">
                                 Скопировать
                             </button>
@@ -1708,7 +1721,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (t.sommelier_advice) {
                     toastHtml += `
                         <div class="somm-advice-card">
-                            <div style="font-weight: 700; color: #1e3a8a; font-size: 13px; margin-bottom: 4px;">💡 Совет сомелье по подаче</div>
+                            <div style="font-weight: 700; color: #1e3a8a; font-size: 13px; margin-bottom: 4px;">Совет сомелье по подаче</div>
                             <div>${formatSommMarkdown(t.sommelier_advice)}</div>
                         </div>
                     `;
@@ -1719,7 +1732,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.recommended_catalog_wines && data.recommended_catalog_wines.length > 0) {
                 similarHtml = `
                     <div style="margin-top: 14px;">
-                        <h5 style="margin: 0 0 8px 0; font-size: 13px; color: #495057; font-weight: 700;">🍷 Близнецы по вкусовому профилю в каталоге:</h5>
+                        <h5 style="margin: 0 0 8px 0; font-size: 13px; color: #495057; font-weight: 700;">Близнецы по вкусовому профилю в каталоге:</h5>
                         <div style="display: flex; flex-direction: column; gap: 8px;">
                 `;
                 data.recommended_catalog_wines.forEach(w => {
@@ -1933,7 +1946,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (histTopPill) {
                     histTopPill.innerHTML = `
                         <span class="cat-chip gold-badge" onclick="openWineHistoryModal('${slug}')" style="cursor: pointer; padding: 6px 12px; font-size: 12px;">
-                            <img src="img/glass_filled_straight.png" class="badge-icon-glass-mini" alt=""> История вина
+                            <img src="svg/public-rating.svg" class="badge-icon-glass-mini" style="width: 14px; height: 14px; object-fit: contain;" alt=""> История вина
                         </span>
                     `;
                 }

@@ -536,7 +536,13 @@
             }
 
             // Если страница открыта напрямую как статика (/static/scanner.html), сверяем boot_id через /api/health
-            fetch('/api/health').then(function(r) { return r.json(); }).then(function(data) {
+            var _hUrl = '/api/health';
+            try {
+                var _p = new URLSearchParams(window.location.search).get('api');
+                var _b = _p ? _p.trim().replace(/\/+$/, '') : (localStorage.getItem('vina_api_url') || '');
+                if (_b) _hUrl = _b + '/api/health';
+            } catch(e) {}
+            fetch(_hUrl).then(function(r) { return r.json(); }).then(function(data) {
                 if (previewStep) return;
                 if (data && data.boot_id) {
                     currentBootId = String(data.boot_id);
@@ -1144,12 +1150,12 @@
                     <h3 style="display: flex; align-items: center; justify-content: space-between;">
                         <span style="display: flex; align-items: center;">
                             <div class="badge-icon-wrapper" style="margin-right: 8px;">
-                                <img src="img/glass_filled_straight.png" class="badge-icon" alt="">
+                                <img src="svg/public-rating.svg" class="badge-icon" alt="" style="width: 20px; height: 20px; object-fit: contain;">
                             </div>
                             Доказательный сомелье VINA
                         </span>
                         <button class="cat-chip gold-badge" id="btn-result-history" style="display: none; padding: 4px 10px; font-size: 11px;" onclick="openWineHistoryModal(window.currentScannedSlug)">
-                            <img src="img/glass_filled_straight.png" class="badge-icon-glass-mini"> История вина
+                            <img src="svg/public-rating.svg" class="badge-icon-glass-mini" style="width: 14px; height: 14px; object-fit: contain;"> История вина
                         </button>
                     </h3>
 
@@ -1166,9 +1172,9 @@
                             <span style="font-size: 11px; font-weight: 600; color: #722F37;">Экспресс-оценка</span>
                         </div>
                         <div class="pairing-options" id="scanner-quick-pairing-options" style="margin-bottom: 8px;">
-                            <button type="button" class="btn-pairing" onclick="handleScannerPairingClick('стейк', 'Мясо')">🥩 Мясо</button>
-                            <button type="button" class="btn-pairing" onclick="handleScannerPairingClick('рыба', 'Рыба')">🐟 Рыба</button>
-                            <button type="button" class="btn-pairing" onclick="handleScannerPairingClick('сыр', 'Сыры')">🧀 Сыры</button>
+                            <button type="button" class="btn-pairing" onclick="handleScannerPairingClick('стейк', 'Мясо')">Мясо</button>
+                            <button type="button" class="btn-pairing" onclick="handleScannerPairingClick('рыба', 'Рыба')">Рыба</button>
+                            <button type="button" class="btn-pairing" onclick="handleScannerPairingClick('сыр', 'Сыры')">Сыры</button>
                         </div>
                         <div id="scanner-dynamic-dishes-chips" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;"></div>
                         
@@ -1194,16 +1200,14 @@
                     <!-- Действия сомелье: Чат, Подбор блюда, Тост -->
                     <div class="sommelier-actions mt-10" style="margin-top: 16px; display: flex; gap: 8px;">
                         <button type="button" class="btn btn-primary" onclick="openSommelierEntryPoint(window.currentScannedSlug, null, 'chat')" style="flex: 1.2; border-radius: 12px; padding: 12px 8px; font-weight: 700; font-size: 13.5px; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                            </svg>
+                            <img src="svg/public-rating.svg" style="width: 17px; height: 17px; object-fit: contain;" alt="">
                             <span>Чат с сомелье</span>
                         </button>
                         <button type="button" class="btn btn-secondary" onclick="openSommelierEntryPoint(window.currentScannedSlug, null, 'pairing')" style="flex: 1; border-radius: 12px; padding: 12px 8px; font-weight: 600; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #ced4da;">
-                            🍽 Блюда
+                            Блюда
                         </button>
                         <button type="button" class="btn btn-secondary" onclick="openSommelierEntryPoint(window.currentScannedSlug, null, 'toast')" style="flex: 1; border-radius: 12px; padding: 12px 8px; font-weight: 600; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #ced4da;">
-                            🥂 Тост
+                            Тост
                         </button>
                     </div>
                 </div>
@@ -1330,9 +1334,9 @@
                             <div class="sidebar-section">
                                 <div class="sidebar-title">Рейтинги и награды</div>
                                 <div class="sidebar-list">
-                                    <label class="sidebar-check-item"><input type="checkbox" id="check-rate-48" value="4.8" onchange="onSidebarRatingCheck(this)"> <img src="img/glass_filled_straight.png" class="badge-icon-glass-mini" alt=""> Народный рейтинг (от 4.8)</label>
-                                    <label class="sidebar-check-item"><input type="checkbox" id="check-rate-45" value="4.5" onchange="onSidebarRatingCheck(this)"> <img src="img/glass_filled_straight.png" class="badge-icon-glass-mini" alt=""> Высокий рейтинг (от 4.5)</label>
-                                    <label class="sidebar-check-item"><input type="checkbox" id="check-sidebar-hist" onchange="onSidebarHistoryCheck(this)"> <img src="img/glass_filled_straight.png" class="badge-icon-glass-mini" alt=""> Вина с историей (Ялта 1945)</label>
+                                    <label class="sidebar-check-item"><input type="checkbox" id="check-rate-48" value="4.8" onchange="onSidebarRatingCheck(this)"> <img src="svg/public-rating.svg" class="badge-icon-glass-mini" style="width: 14px; height: 14px; object-fit: contain;" alt=""> Народный рейтинг (от 4.8)</label>
+                                    <label class="sidebar-check-item"><input type="checkbox" id="check-rate-45" value="4.5" onchange="onSidebarRatingCheck(this)"> <img src="svg/public-rating.svg" class="badge-icon-glass-mini" style="width: 14px; height: 14px; object-fit: contain;" alt=""> Высокий рейтинг (от 4.5)</label>
+                                    <label class="sidebar-check-item"><input type="checkbox" id="check-sidebar-hist" onchange="onSidebarHistoryCheck(this)"> <img src="svg/public-rating.svg" class="badge-icon-glass-mini" style="width: 14px; height: 14px; object-fit: contain;" alt=""> Вина с историей (Ялта 1945)</label>
                                 </div>
                             </div>
                         </div>
@@ -1382,9 +1386,7 @@
                             <span id="catalog-filters-badge" class="cat-filter-count-badge" style="display: none;">0</span>
                         </button>
                         <button type="button" class="home-action-plate catalog-action-btn catalog-sommelier-btn" onclick="openSommelierFromHome()" title="Открыть винного Сомелье">
-                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M8 22h8M12 11v11M5 2h14l-2 9H7L5 2z"/>
-                            </svg>
+                            <img src="svg/public-rating.svg" style="width: 17px; height: 17px; object-fit: contain;" alt="">
                             <span>Сомелье</span>
                         </button>
                     </div>
@@ -1510,7 +1512,7 @@
                     <!-- 4. Органолептический профиль и баланс вкуса (полоски тоньше в 1,5 раза, строго бордовый и серый) -->
                     <div style="margin-bottom: 22px;">
                         <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 700; color: #1a1a1a; display: flex; align-items: center; gap: 6px;">
-                            <img src="img/glass_filled_straight.png" class="badge-icon-glass-mini" style="filter: brightness(0) saturate(100%) invert(11%) sepia(77%) saturate(4640%) hue-rotate(334deg) brightness(78%) contrast(106%);" alt="">
+                            <img src="svg/public-rating.svg" style="width: 16px; height: 16px; object-fit: contain;" alt="">
                             Органолептический профиль и баланс вкуса
                         </h4>
                         <div id="detail-sensory-bars"></div>
@@ -1526,7 +1528,7 @@
                     <div id="detail-dishes-block" style="margin-bottom: 22px; display: none;">
                         <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 700; color: #1a1a1a; display: flex; align-items: center; justify-content: space-between;">
                             <span style="display: flex; align-items: center; gap: 6px;">
-                                <img src="img/glass_filled_straight.png" class="badge-icon-glass-mini" style="filter: brightness(0) saturate(100%) invert(11%) sepia(77%) saturate(4640%) hue-rotate(334deg) brightness(78%) contrast(106%);" alt="">
+                                <img src="svg/public-rating.svg" style="width: 16px; height: 16px; object-fit: contain;" alt="">
                                 С чем подать (совет сомелье)
                             </span>
                             <span style="font-size: 11px; font-weight: 600; color: #722F37;">Гастропары</span>
@@ -1552,7 +1554,7 @@
                     <!-- 6. История вина (только при наличии) -->
                     <div id="detail-wine-history-block" style="display: none; margin-bottom: 22px; background: #fffcf4; border: 1px solid #fae8b6; border-radius: 12px; padding: 14px;">
                         <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
-                            <img src="img/glass_filled_straight.png" class="badge-icon-glass-mini" alt="">
+                            <img src="svg/public-rating.svg" style="width: 16px; height: 16px; object-fit: contain;" alt="">
                             <strong style="color: #856404; font-size: 14px;">История вина:</strong>
                             <span id="detail-wine-history-year" style="font-size: 12px; font-weight: 700; color: #856404;"></span>
                         </div>
@@ -1581,7 +1583,7 @@
                 <!-- 8. Статический сектор выше нижней навигации: слева "Спросить сомелье", справа "Собрать сет" -->
                 <div class="detail-sticky-bar" id="detail-sticky-action-bar">
                     <button type="button" class="btn-sticky-somm" id="btn-detail-sticky-somm" onclick="openSommelierForDetailWine()">
-                        <img src="img/glass_filled_straight.png" class="badge-icon-glass-mini" style="filter: brightness(0) saturate(100%) invert(11%) sepia(77%) saturate(4640%) hue-rotate(334deg) brightness(78%) contrast(106%);" alt="">
+                        <img src="svg/public-rating.svg" style="width: 20px; height: 20px; object-fit: contain;" alt="">
                         <span>Спросить сомелье</span>
                     </button>
                     <button type="button" class="btn-sticky-set" id="btn-detail-sticky-set" onclick="openWineSetModal()">
@@ -1637,7 +1639,7 @@
         <div id="hub-panel-sommelier" class="hub-panel">
             <div class="hub-card">
                 <h3 style="margin-bottom: 6px; font-size: 18px; color: #1a1a1a; display: flex; align-items: center; gap: 8px;">
-                    <img src="img/glass_filled_straight.png" class="badge-icon-glass-mini" alt="">
+                    <img src="svg/public-rating.svg" style="width: 24px; height: 24px; object-fit: contain;" alt="">
                     Винный Сомелье и Мастер тостов
                 </h3>
                 <p style="font-size: 13px; color: #6c757d; margin-bottom: 14px;">
@@ -1773,16 +1775,16 @@
                 <!-- Шапка сомелье -->
                 <div style="background: linear-gradient(135deg, #722F37 0%, #4a151b 100%); color: #ffffff; padding: 16px 18px; display: flex; align-items: center; justify-content: space-between; position: relative;">
                     <div style="display: flex; align-items: center; gap: 12px;">
-                        <div style="width: 44px; height: 44px; background: rgba(255,255,255,0.15); border-radius: 12px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.2);">
-                            <img src="img/glass_filled_straight.png" style="width: 24px; height: 32px; object-fit: contain; filter: brightness(0) invert(1);" alt="Сомелье">
+                        <div style="width: 44px; height: 44px; background: rgba(255,255,255,0.18); border-radius: 12px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.25); box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+                            <img src="svg/public-rating.svg" style="width: 28px; height: 28px; object-fit: contain;" alt="Сомелье">
                         </div>
                         <div>
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <h3 style="margin: 0; font-size: 17px; font-weight: 700; color: #ffffff;">Цифровой ИИ-Сомелье VINA</h3>
                                 <span style="background: #27ae60; color: #fff; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; letter-spacing: 0.3px;">ONLINE</span>
                             </div>
-                            <div id="somm-active-wine-badge" style="font-size: 12px; color: #f8d7da; margin-top: 3px; font-weight: 500; max-width: 380px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                🍷 Вино: <span id="somm-stub-wine-name" style="font-weight: 700; color: #ffffff;">Все вина каталога</span>
+                            <div id="somm-active-wine-badge" style="font-size: 12px; color: #f8d7da; margin-top: 3px; font-weight: 500; max-width: 380px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 4px;">
+                                <span>Вино:</span> <span id="somm-stub-wine-name" style="font-weight: 700; color: #ffffff;">Все вина каталога</span>
                             </div>
                         </div>
                     </div>
@@ -1792,13 +1794,13 @@
                 <!-- Переключатель режимов сомелье -->
                 <div style="display: flex; background: #f8f9fa; border-bottom: 1px solid #e9ecef; padding: 6px 12px; gap: 6px;">
                     <button type="button" class="somm-tab-pill active" id="somm-pill-chat" onclick="switchSommModalTab('chat')" style="flex: 1; padding: 8px 12px; border-radius: 10px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; background: #ffffff; color: #722F37; box-shadow: 0 1px 4px rgba(0,0,0,0.06); display: flex; align-items: center; justify-content: center; gap: 6px;">
-                        💬 Диалог
+                        Диалог
                     </button>
                     <button type="button" class="somm-tab-pill" id="somm-pill-pairing" onclick="switchSommModalTab('pairing')" style="flex: 1; padding: 8px 12px; border-radius: 10px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; background: transparent; color: #6c757d; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                        🍽 Подбор к блюду
+                        Подбор к блюду
                     </button>
                     <button type="button" class="somm-tab-pill" id="somm-pill-toast" onclick="switchSommModalTab('toast')" style="flex: 1; padding: 8px 12px; border-radius: 10px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; background: transparent; color: #6c757d; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                        🥂 Тосты
+                        Тосты
                     </button>
                 </div>
 
@@ -1809,7 +1811,7 @@
                         <!-- Стартовое сообщение ассистента -->
                         <div class="somm-msg somm-msg-assistant" style="display: flex; gap: 10px; align-items: flex-start;">
                             <div style="width: 32px; height: 32px; border-radius: 50%; background: #fdf2f4; border: 1px solid #f8d7da; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                <img src="img/glass_filled_straight.png" style="width: 16px; height: 22px; object-fit: contain;" alt="">
+                                <img src="svg/public-rating.svg" style="width: 20px; height: 20px; object-fit: contain;" alt="Сомелье">
                             </div>
                             <div style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px 16px 16px 16px; padding: 12px 16px; font-size: 13.5px; line-height: 1.55; color: #212529; max-width: 90%;">
                                 <p style="margin: 0 0 8px 0; font-weight: 600; color: #722F37;">Приветствую! Я ваш цифровой ИИ-сомелье.</p>
@@ -1817,10 +1819,10 @@
                                 
                                 <!-- Быстрые чипсы-подсказки -->
                                 <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;">
-                                    <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('С чем подать это вино?')">🍽 С чем подать?</button>
-                                    <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Опиши вкус, кислотность и танины')">🍷 Профиль вкуса</button>
-                                    <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Подбери 3 похожих российских вина')">🔄 Найти аналоги</button>
-                                    <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Стейк рибай, не люблю дуб')">🥩 Стейк без дуба</button>
+                                    <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('С чем подать это вино?')">С чем подать?</button>
+                                    <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Опиши вкус, кислотность и танины')">Профиль вкуса</button>
+                                    <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Подбери 3 похожих российских вина')">Найти аналоги</button>
+                                    <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Стейк')">Стейк</button>
                                 </div>
                             </div>
                         </div>
@@ -1846,13 +1848,13 @@
                     </p>
 
                     <div style="display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px;">
-                        <button type="button" class="somm-pairing-chip" onclick="runSommPairingFast('стейк рибай')">🥩 Стейк Рибай</button>
-                        <button type="button" class="somm-pairing-chip" onclick="runSommPairingFast('лосось на гриле')">🐟 Лосось на гриле</button>
-                        <button type="button" class="somm-pairing-chip" onclick="runSommPairingFast('паста карбонара')">🍝 Паста Карбонара</button>
-                        <button type="button" class="somm-pairing-chip" onclick="runSommPairingFast('устрицы')">🦪 Устрицы</button>
-                        <button type="button" class="somm-pairing-chip" onclick="runSommPairingFast('утка с яблоками')">🍗 Утка с яблоками</button>
-                        <button type="button" class="somm-pairing-chip" onclick="runSommPairingFast('тирамису')">🍰 Тирамису</button>
-                        <button type="button" class="somm-pairing-chip" onclick="runSommPairingFast('аналог Шабли')">🇫🇷 Аналог Шабли</button>
+                        <button type="button" class="somm-pairing-chip" onclick="runSommPairingFast('стейк рибай')">Стейк Рибай</button>
+                        <button type="button" class="somm-pairing-chip" onclick="runSommPairingFast('лосось на гриле')">Лосось на гриле</button>
+                        <button type="button" class="somm-pairing-chip" onclick="runSommPairingFast('паста карбонара')">Паста Карбонара</button>
+                        <button type="button" class="somm-pairing-chip" onclick="runSommPairingFast('устрицы')">Устрицы</button>
+                        <button type="button" class="somm-pairing-chip" onclick="runSommPairingFast('утка с яблоками')">Утка с яблоками</button>
+                        <button type="button" class="somm-pairing-chip" onclick="runSommPairingFast('тирамису')">Тирамису</button>
+                        <button type="button" class="somm-pairing-chip" onclick="runSommPairingFast('аналог Шабли')">Аналог Шабли</button>
                     </div>
 
                     <div style="display: flex; gap: 8px; margin-bottom: 16px;">
@@ -1867,7 +1869,10 @@
 
                 <!-- РЕЖИМ 3: МАСТЕР ТОСТОВ И СОВЕТОВ -->
                 <div id="somm-modal-view-toast" class="somm-modal-view" style="display: none; padding: 18px 20px; overflow-y: auto; flex: 1;">
-                    <h4 style="margin: 0 0 6px 0; font-size: 15px; color: #1a1a1a;">🥂 Авторский тост и историческая справка</h4>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                        <img src="svg/public-rating.svg" style="width: 20px; height: 20px; object-fit: contain;" alt="">
+                        <h4 style="margin: 0; font-size: 15px; color: #1a1a1a;">Авторский тост и историческая справка</h4>
+                    </div>
                     <p style="margin: 0 0 14px 0; font-size: 13px; color: #6c757d; line-height: 1.45;">
                         Сгенерирует торжественный или душевный тост к текущему вину с исторической отсылкой (Ялта 1945, князь Голицын) и гастрономический совет.
                     </p>
@@ -1884,7 +1889,7 @@
                     </div>
 
                     <button type="button" class="btn btn-primary" onclick="runSommModalToast()" style="width: 100%; border-radius: 10px; padding: 11px; font-weight: 700; font-size: 14px; margin-bottom: 16px;">
-                        ✨ Сгенерировать тост и совет сомелье
+                        Сгенерировать тост и совет сомелье
                     </button>
 
                     <div id="somm-modal-toast-results-box"></div>
@@ -1897,7 +1902,7 @@
     <div class="missing-wine-modal-overlay" id="missing-wine-modal" onclick="if(event.target.id==='missing-wine-modal') closeMissingWineModal()">
         <div class="missing-wine-modal-card">
             <div class="missing-wine-icon-wrap">
-                <img src="img/glass_filled_straight.png" class="missing-wine-icon-img" alt="">
+                <img src="svg/public-rating.svg" class="missing-wine-icon-img" alt="" style="width: 32px; height: 32px; object-fit: contain;">
             </div>
             <h3 class="missing-wine-title">Вино не найдено</h3>
             <p class="missing-wine-text" id="missing-wine-message">
@@ -1911,7 +1916,7 @@
                     Понятно
                 </button>
                 <button class="btn btn-primary" onclick="openSommelierFromMissingWine()" style="flex: 1.4; border-radius: 12px; padding: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                    <img src="img/glass_filled_straight.png" class="badge-icon-glass-mini" style="filter: brightness(0) invert(1);" alt="">
+                    <img src="svg/public-rating.svg" class="badge-icon-glass-mini" style="width: 18px; height: 18px; object-fit: contain; filter: brightness(0) invert(1);" alt="">
                     <span>Спросить сомелье</span>
                 </button>
             </div>
@@ -1924,7 +1929,7 @@
             <div class="admin-dashboard-header">
                 <div>
                     <h2 style="margin: 0; font-size: 19px; color: #1a1a1a; display: flex; align-items: center; gap: 8px;">
-                        <img src="img/glass_filled_straight.png" class="badge-icon-glass-mini" alt="">
+                        <img src="svg/public-rating.svg" class="badge-icon-glass-mini" style="width: 18px; height: 18px; object-fit: contain;" alt="">
                         Дашборд сервиса VINA • Запросы вин
                     </h2>
                     <div style="font-size: 12px; color: #6c757d; margin-top: 3px;">
@@ -1998,12 +2003,23 @@
         let isCameraPowered = true;
 
         function getHubApiBase() {
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                const apiParam = urlParams.get('api');
+                if (apiParam) {
+                    const clean = apiParam.trim().replace(/\/+$/, '');
+                    localStorage.setItem('vina_api_url', clean);
+                    return clean;
+                }
+            } catch(e) {}
             const inp = document.getElementById('input-api-url');
             if (inp && inp.value && inp.value.trim()) {
                 return inp.value.trim().replace(/\/+$/, '');
             }
             const saved = localStorage.getItem('vina_api_url') || '';
-            return saved.replace(/\/+$/, '');
+            if (saved) return saved.replace(/\/+$/, '');
+            if (window.location.protocol === 'file:') return 'http://127.0.0.1:8080';
+            return '';
         }
 
         // Популярные вина для двух горизонтальных лент на Главной
@@ -2855,7 +2871,7 @@
 
             let totalQty = 0;
             let listHtml = '';
-            let plainText = '🍷 СПИСОК ВИН К ПОКУПКЕ\n=======================\n\n';
+            let plainText = 'СПИСОК ВИН К ПОКУПКЕ\n=======================\n\n';
 
             if (savedSets.length > 0) {
                 savedSets.forEach((set, idx) => {
@@ -3845,7 +3861,7 @@
                         <div class="home-wine-card catalog-wine-card-2col" onclick="openWineDetail('${w.slug}')">
                             <div class="home-wine-card-top">
                                 <div class="home-wine-rating-pill">
-                                    <img src="img/glass_filled_straight.png" class="badge-icon-glass-mini" alt="" style="width: 14px; height: 16px; object-fit: contain;">
+                                    <img src="svg/public-rating.svg" class="badge-icon-glass-mini" alt="" style="width: 14px; height: 14px; object-fit: contain;">
                                     <span class="home-rating-score">${ratingScore}</span>
                                 </div>
                                 <button type="button" class="home-fav-btn ${isFav ? 'is-fav' : ''}" data-slug="${w.slug}" onclick="toggleWineFavorite(event, '${w.slug}')" aria-label="В избранное">
@@ -3872,7 +3888,7 @@
                     grid.innerHTML = items.length ? cardsHtml : `
                         <div style="grid-column: 1/-1; text-align: center; padding: 40px 20px; background: #ffffff; border-radius: 16px; border: 1px dashed #ced4da;">
                             <div style="width: 48px; height: 48px; margin: 0 auto 12px auto; display: flex; align-items: center; justify-content: center; background: #fdf2f4; border-radius: 50%;">
-                                <img src="img/glass_filled_straight.png" style="width: 26px; height: 34px; object-fit: contain;" alt="">
+                                <img src="svg/public-rating.svg" style="width: 26px; height: 26px; object-fit: contain;" alt="">
                             </div>
                             <div style="font-size: 15px; font-weight: 700; color: #1a1a1a; margin-bottom: 6px;">
                                 Данного вина пока нет в каталоге, скоро появится, спасибо за проявленный интерес.
@@ -4194,7 +4210,7 @@
 
                 out.innerHTML = `
                     <div class="hub-card">
-                        <span class="cat-chip gold-badge" style="display: inline-block; margin-bottom: 8px;">🥂 Авторский тост сомелье</span>
+                        <span class="cat-chip gold-badge" style="display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px;"><img src="svg/public-rating.svg" style="width: 14px; height: 14px; object-fit: contain;" alt=""> Авторский тост сомелье</span>
                         <h3 style="color: var(--primary); margin: 6px 0 10px 0; font-size: 18px;">${data.toast.toast_title}</h3>
                         <div class="somm-toast-quote">
                             «${data.toast.toast_text}»
@@ -4202,7 +4218,7 @@
                         <p style="font-size: 14px; line-height: 1.5; color: #333; margin: 12px 0;">
                             <b>Совет сомелье:</b> ${data.toast.sommelier_advice}
                         </p>
-                        <h4 style="margin: 16px 0 10px 0; font-size: 15px; color: #1a1a1a;">🔄 Похожие вина из каталога (если захотите альтернативу):</h4>
+                        <h4 style="margin: 16px 0 10px 0; font-size: 15px; color: #1a1a1a;">Похожие вина из каталога (если захотите альтернативу):</h4>
                         <div style="display: flex; flex-direction: column; gap: 8px;">
                             ${(data.recommended_catalog_wines || []).map(a => `
                                 <div style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 12px; padding: 12px; display: flex; justify-content: space-between; align-items: center;">
@@ -4235,7 +4251,7 @@
                 const box = document.getElementById('vina-history-content');
                 box.innerHTML = `
                     <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                        <span class="history-badge-gold"><img src="img/glass_filled_straight.png" class="badge-icon-glass-mini" alt=""> Историческое досье • Год создания: ${h.creation_year}</span>
+                        <span class="history-badge-gold"><img src="svg/public-rating.svg" class="badge-icon-glass-mini" style="width: 14px; height: 14px; object-fit: contain;" alt=""> Историческое досье • Год создания: ${h.creation_year}</span>
                         <button onclick="document.getElementById('vina-history-modal').style.display='none'" style="background:none; border:none; font-size: 22px; cursor: pointer; color: #6c757d;">&times;</button>
                     </div>
                     <h2 style="margin: 6px 0; color: var(--primary); font-size: 20px;">${h.wine_name}</h2>
@@ -4763,7 +4779,7 @@
                     if (histTopPill) {
                         histTopPill.innerHTML = `
                             <span class="cat-chip gold-badge" onclick="openWineHistoryModal('${slug}')" style="cursor: pointer; padding: 6px 12px; font-size: 12px;">
-                                <img src="img/glass_filled_straight.png" class="badge-icon-glass-mini" alt=""> История вина
+                                <img src="svg/public-rating.svg" class="badge-icon-glass-mini" style="width: 14px; height: 14px; object-fit: contain;" alt=""> История вина
                             </span>
                         `;
                     }
@@ -4831,7 +4847,7 @@
                             dishesBlock.style.display = 'block';
                             dishesChips.innerHTML = sData.best_dishes.map(bd => `
                                 <button type="button" class="cat-tag-pill" onclick="handleDetailPairingClick('${slug}', '${bd.query}', '${bd.label}')" style="cursor: pointer; padding: 6px 12px; font-size: 12px; font-weight: 600; border: 1px solid #ced4da; background: #ffffff; color: #212529;">
-                                    🍽 ${bd.label} <span style="font-size: 10px; color: #28a745; margin-left: 4px;">${Math.round(bd.score)}%</span>
+                                    ${bd.label} <span style="font-size: 10px; color: #28a745; margin-left: 4px;">${Math.round(bd.score)}%</span>
                                 </button>
                             `).join('');
                         }
@@ -4891,7 +4907,7 @@
                     const factorsHtml = (p.factors || []).map(f => `<li style="margin-bottom: 3px;">${f.text}</li>`).join('');
                     vBox.innerHTML = `
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <strong style="color: #722F37;">🍽 ${label}: ${verdictTitle}</strong>
+                            <strong style="color: #722F37;">${label}: ${verdictTitle}</strong>
                             <span style="background: #722F37; color: #ffffff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 8px;">${score}%</span>
                         </div>
                         <ul style="margin: 0; padding-left: 18px; color: #495057; font-size: 12.5px; line-height: 1.45;">
@@ -5200,7 +5216,7 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <div style="width: 32px; height: 32px; border-radius: 8px; background: #fdf2f4; display: flex; align-items: center; justify-content: center;">
-                            <img src="img/glass_filled_straight.png" style="width: 16px; height: 18px; object-fit: contain;" alt="">
+                            <img src="svg/public-rating.svg" style="width: 18px; height: 18px; object-fit: contain;" alt="">
                         </div>
                         <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #1a1a1a;">Собрать винный сет</h3>
                     </div>
