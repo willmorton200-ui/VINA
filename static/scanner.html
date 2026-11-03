@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Свое вино | Сканер, Каталог, Карта и Сомелье</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="scanner.css?v=49_i18n">
+    <link rel="stylesheet" href="scanner.css?v=50_colorfilter">
     <style>
         .vina-lang-switcher {
             display: inline-flex;
@@ -86,7 +86,7 @@
     <!-- Leaflet OpenStreetMap для закладки "Карта вин" -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="i18n.js?v=49_i18n"></script>
+    <script src="i18n.js?v=50_colorfilter"></script>
     <script>
         // =========================================================================
         // ЛОГИКА ФУНКЦИИ «СОБРАТЬ СЕТ» И НАВИГАЦИИ КАРТОЧКИ ВИНА
@@ -2199,7 +2199,7 @@
     </div>
 
     <!-- Основной скрипт сканера -->
-    <script src="scanner.js?v=49_i18n"></script>
+    <script src="scanner.js?v=50_colorfilter"></script>
 
     <!-- Скрипт логики Главной страницы, Каталога, Карты, Избранного и Тостов -->
     <script>
@@ -3363,26 +3363,29 @@
         }
 
         function filterCatalogByColorFromHome(colorVal) {
+            if (!isCatalogLoadedOnce) {
+                loadCatalogFacetsIntoSidebar();
+                isCatalogLoadedOnce = true;
+            }
             switchHubTab('catalog');
             const detailView = document.getElementById('catalog-detail-view');
             const mainView = document.getElementById('catalog-main-view');
             if (detailView) detailView.style.display = 'none';
             if (mainView) mainView.style.display = 'block';
 
-            if (colorVal === 'Игристое') {
-                catalogColorFilter = '';
-                const catInp = document.getElementById('cat-search-q');
-                if (catInp) catInp.value = 'Игристое';
+            const catInp = document.getElementById('cat-search-q');
+            if (catInp) catInp.value = '';
+
+            const targetPlate = document.querySelector(`#catalog-category-scroll .home-cat-card[data-cat="${colorVal}"]`);
+            if (targetPlate) {
+                selectCatalogCategoryPlate(targetPlate, colorVal);
+                try {
+                    targetPlate.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                } catch (e) {}
             } else {
-                const catInp = document.getElementById('cat-search-q');
-                if (catInp) catInp.value = '';
-                catalogColorFilter = colorVal;
+                const allPlate = document.querySelector('#catalog-category-scroll .home-cat-card[data-cat="all"]');
+                selectCatalogCategoryPlate(allPlate, 'all');
             }
-            document.querySelectorAll('.cat-chips-row [data-color]').forEach(b => {
-                b.classList.toggle('selected', b.getAttribute('data-color') === catalogColorFilter);
-            });
-            catalogPageOffset = 0;
-            fetchCatalogWines(false);
         }
 
         function openToastCategoryPage(catKey, catTitle) {
