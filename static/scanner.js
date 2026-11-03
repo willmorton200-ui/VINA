@@ -1407,6 +1407,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const modal = document.getElementById('sommelier-stub-modal');
         if (modal) {
             modal.style.display = 'flex';
+            if (typeof window.applyI18nToDOM === 'function') {
+                window.applyI18nToDOM(modal);
+            }
         }
     };
 
@@ -1447,7 +1450,32 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.sendSommQuickQuery = function(text) {
-        window.sendSommChatMessage(text);
+        const isEn = window.getAppLang && window.getAppLang() === 'en';
+        let query = text;
+        const ruToEn = {
+            'С чем подать это вино?': 'What to pair with this wine?',
+            'С чем подать?': 'What to pair with this wine?',
+            'Опиши вкус, кислотность и танины': 'Describe taste, acidity and tannins',
+            'Профиль вкуса': 'Describe taste, acidity and tannins',
+            'Подбери 3 похожих российских вина': 'Find 3 similar Russian wines',
+            'Найти аналоги': 'Find 3 similar Russian wines',
+            'Стейк': 'Steak'
+        };
+        const enToRu = {
+            'What to pair with this wine?': 'С чем подать это вино?',
+            'What to pair with?': 'С чем подать это вино?',
+            'Describe taste, acidity and tannins': 'Опиши вкус, кислотность и танины',
+            'Flavor Profile': 'Опиши вкус, кислотность и танины',
+            'Find 3 similar Russian wines': 'Подбери 3 похожих российских вина',
+            'Find Analogs': 'Подбери 3 похожих российских вина',
+            'Steak': 'Стейк'
+        };
+        if (isEn && ruToEn[query]) {
+            query = ruToEn[query];
+        } else if (!isEn && enToRu[query]) {
+            query = enToRu[query];
+        }
+        window.sendSommChatMessage(query);
     };
 
     window.resetSommChatSession = async function() {
@@ -1478,10 +1506,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p style="margin: 0 0 8px 0; font-weight: 600; color: #722F37;">${isEn ? 'Chat cleared. How can I help you?' : 'Диалог очищен. Чем могу помочь?'}</p>
                         <p style="margin: 0;">${isHomeOrAll ? (isEn ? 'Ask any question about wine: food pairings, flavor profile, or ask to find Russian analogs for your dinner.' : 'Задайте любой вопрос по вину: с чем подать, какой у него вкусовой профиль, или попросите подобрать российские аналоги к вашему ужину.') : (isEn ? `I am ready to tell you everything about <strong>${escapeSommHtml(title)}</strong>.` : `Я готов рассказать всё о вине <strong>${escapeSommHtml(title)}</strong>.`)}</p>
                         <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;">
-                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('С чем подать это вино?')">${isEn ? 'What to pair with?' : 'С чем подать?'}</button>
-                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Опиши вкус, кислотность и танины')">${isEn ? 'Flavor Profile' : 'Профиль вкуса'}</button>
-                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Подбери 3 похожих российских вина')">${isEn ? 'Find Analogs' : 'Найти аналоги'}</button>
-                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Стейк')">${isEn ? 'Steak' : 'Стейк'}</button>
+                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('${isEn ? 'What to pair with this wine?' : 'С чем подать это вино?'}')">${isEn ? 'What to pair with?' : 'С чем подать?'}</button>
+                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('${isEn ? 'Describe taste, acidity and tannins' : 'Опиши вкус, кислотность и танины'}')">${isEn ? 'Flavor Profile' : 'Профиль вкуса'}</button>
+                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('${isEn ? 'Find 3 similar Russian wines' : 'Подбери 3 похожих российских вина'}')">${isEn ? 'Find Analogs' : 'Найти аналоги'}</button>
+                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('${isEn ? 'Steak' : 'Стейк'}')">${isEn ? 'Steak' : 'Стейк'}</button>
                         </div>
                     </div>
                 </div>
@@ -1527,15 +1555,20 @@ document.addEventListener('DOMContentLoaded', () => {
         messagesBox.scrollTop = messagesBox.scrollHeight;
 
         try {
+            const curLang = (window.getAppLang ? window.getAppLang() : 'ru');
             const payload = {
                 message: query,
                 session_id: window.sommChatSessionId || undefined,
-                wine_slug: (window.currentSommelierSlug && window.currentSommelierSlug !== 'main-home' ? window.currentSommelierSlug : null)
+                wine_slug: (window.currentSommelierSlug && window.currentSommelierSlug !== 'main-home' ? window.currentSommelierSlug : null),
+                lang: curLang
             };
 
             const res = await fetch(apiUrl('/api/sommelier/ask'), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-App-Lang': curLang
+                },
                 body: JSON.stringify(payload)
             });
 

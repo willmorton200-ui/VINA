@@ -64,9 +64,9 @@ async def ask(payload: SommelierAskRequest, request: Request) -> SommelierAskRes
         get_request_lang,
         translate_dialog_ask_response_en,
     )
-    cur_lang = get_request_lang(request)
+    cur_lang = get_request_lang(request, getattr(payload, "lang", None))
 
-    result = await run_in_threadpool(sommelier.ask, query, payload.wine_slug)
+    result = await run_in_threadpool(sommelier.ask, query, payload.wine_slug, cur_lang)
     if cur_lang == "en":
         result = translate_dialog_ask_response_en(result, query)
     picks = result.get("picks", [])

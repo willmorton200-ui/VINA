@@ -46,7 +46,7 @@ class Sommelier:
         self.last = None
         self.active_wine_slug = None
 
-    def ask(self, text, wine_slug=None):
+    def ask(self, text, wine_slug=None, lang="ru"):
         code = guardrails.check(text)
         if code:
             return dict(kind="guardrail", code=code, text=guardrails.MESSAGES[code])
@@ -81,7 +81,8 @@ class Sommelier:
             if target_wine:
                 t_slug = slug or target_wine.get("id") or ""
                 self.active_wine_slug = t_slug
-                text_out = render_food_pairing_answer(target_wine, t_slug)
+                text_out = render_food_pairing_answer(target_wine, t_slug, lang=lang)
+                note_text = "Gastronomic pairings by VINA Sommelier" if lang == "en" else "Гастрономические сочетания сомелье VINA"
                 return dict(
                     kind="answer",
                     text=text_out,
@@ -89,11 +90,17 @@ class Sommelier:
                     types=[],
                     pool=len(self.wines),
                     total=len(self.wines),
-                    note="Гастрономические сочетания сомелье VINA",
+                    note=note_text,
                 )
+
+            clarify_text = (
+                "Please specify the wine name or open its card in the catalog, and I will describe the ideal cuisine, specific dishes, and gastronomic rationale."
+                if lang == "en"
+                else "Пожалуйста, укажите название вина или откройте его карточку в каталоге, и я подробно опишу подходящую кухню, конкретные блюда и химическое обоснование вкуса."
+            )
             return dict(
                 kind="clarify",
-                text="Пожалуйста, укажите название вина или откройте его карточку в каталоге, и я подробно опишу подходящую кухню, конкретные блюда и химическое обоснование вкуса.",
+                text=clarify_text,
             )
 
         # 2. Запрос на вкусовой профиль вина (кислотность, танины, тело)
@@ -106,7 +113,8 @@ class Sommelier:
             if target_wine:
                 t_slug = slug or target_wine.get("id") or ""
                 self.active_wine_slug = t_slug
-                text_out = render_taste_profile_answer(target_wine, t_slug)
+                text_out = render_taste_profile_answer(target_wine, t_slug, lang=lang)
+                note_text = "Organoleptic profile by VINA" if lang == "en" else "Органолептический профиль вина VINA"
                 return dict(
                     kind="answer",
                     text=text_out,
@@ -114,11 +122,17 @@ class Sommelier:
                     types=[],
                     pool=len(self.wines),
                     total=len(self.wines),
-                    note="Органолептический профиль вина VINA",
+                    note=note_text,
                 )
+
+            clarify_text = (
+                "Please specify the wine name, and I will detail its balance: acidity, tannins, body, and tasting notes."
+                if lang == "en"
+                else "Пожалуйста, укажите название вина, и я разложу его баланс: кислотность, танины, тело и дегустационные ноты."
+            )
             return dict(
                 kind="clarify",
-                text="Пожалуйста, укажите название вина, и я разложу его баланс: кислотность, танины, тело и дегустационные ноты.",
+                text=clarify_text,
             )
 
         # 3. Запрос на поиск аналогов
@@ -132,7 +146,7 @@ class Sommelier:
                 t_slug = slug or target_wine.get("id") or ""
                 self.active_wine_slug = t_slug
                 alts = find_analogs_in_catalog(target_wine, self.wines, top_k=3)
-                text_out, picks = render_analogs_answer(target_wine, alts)
+                text_out, picks = render_analogs_answer(target_wine, alts, lang=lang)
                 return dict(
                     kind="recommendation",
                     text=text_out,

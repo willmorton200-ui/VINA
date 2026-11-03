@@ -10,6 +10,7 @@ class SommelierAskRequest(BaseModel):
     text: str | None = Field(None, min_length=1, max_length=2000)
     wine_slug: str | None = None
     session_id: str | None = Field(None, min_length=1, max_length=64, pattern=SESSION_ID_PATTERN)
+    lang: str | None = None
 
 
 class SommelierResetRequest(BaseModel):

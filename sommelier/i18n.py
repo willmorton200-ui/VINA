@@ -1979,9 +1979,24 @@ def translate_dialog_ask_response_en(result: Dict[str, Any], query: str = "") ->
     elif kind == "offtopic" or kind == "guardrail":
         out["text"] = "I am your AI Wine Sommelier and can help you choose wines, food pairings, tasting notes, and toasts."
     else:
-        out["text"] = translate_wine_description(out.get("text", ""), None, "en")
+        existing_text = out.get("text", "")
+        if (
+            existing_text.startswith("### Gastronomic Pairings")
+            or existing_text.startswith("### Taste Profile")
+            or "Why it Pairs" in existing_text
+            or "Gastronomic Rationale" in existing_text
+            or "Гастрономические причины" in existing_text
+            or "Почему подходит" in existing_text
+            or "### Вкусовой профиль" in existing_text
+            or "### Гастрономические сочетания" in existing_text
+        ):
+            # Preserve rich sommelier answer without overwriting with generic description
+            pass
+        else:
+            out["text"] = translate_wine_description(existing_text, None, "en")
 
-    out["note"] = "Reference information based on catalog descriptions (18+)."
+    if not out.get("note") or "каталог" in (out.get("note") or "").lower():
+        out["note"] = "Reference information based on catalog descriptions (18+)."
     return out
 
 

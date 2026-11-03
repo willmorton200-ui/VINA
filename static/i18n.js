@@ -1071,6 +1071,41 @@
                 }
             });
         });
+        // 7.1. Sommelier quick query chips
+        const sommChips = document.querySelectorAll('.somm-chip-btn');
+        sommChips.forEach(function (btn) {
+            const txt = (btn.textContent || '').trim();
+            if (lang === 'en') {
+                if (txt === 'С чем подать?' || txt === 'What to pair with?') {
+                    btn.textContent = 'What to pair with?';
+                    btn.setAttribute('onclick', "sendSommQuickQuery('What to pair with this wine?')");
+                } else if (txt === 'Профиль вкуса' || txt === 'Flavor Profile') {
+                    btn.textContent = 'Flavor Profile';
+                    btn.setAttribute('onclick', "sendSommQuickQuery('Describe taste, acidity and tannins')");
+                } else if (txt === 'Найти аналоги' || txt === 'Find Analogs') {
+                    btn.textContent = 'Find Analogs';
+                    btn.setAttribute('onclick', "sendSommQuickQuery('Find 3 similar Russian wines')");
+                } else if (txt === 'Стейк' || txt === 'Steak') {
+                    btn.textContent = 'Steak';
+                    btn.setAttribute('onclick', "sendSommQuickQuery('Steak')");
+                }
+            } else {
+                if (txt === 'What to pair with?' || txt === 'С чем подать?') {
+                    btn.textContent = 'С чем подать?';
+                    btn.setAttribute('onclick', "sendSommQuickQuery('С чем подать это вино?')");
+                } else if (txt === 'Flavor Profile' || txt === 'Профиль вкуса') {
+                    btn.textContent = 'Профиль вкуса';
+                    btn.setAttribute('onclick', "sendSommQuickQuery('Опиши вкус, кислотность и танины')");
+                } else if (txt === 'Find Analogs' || txt === 'Найти аналоги') {
+                    btn.textContent = 'Найти аналоги';
+                    btn.setAttribute('onclick', "sendSommQuickQuery('Подбери 3 похожих российских вина')");
+                } else if (txt === 'Steak' || txt === 'Стейк') {
+                    btn.textContent = 'Стейк';
+                    btn.setAttribute('onclick', "sendSommQuickQuery('Стейк')");
+                }
+            }
+        });
+
         // 8. Scanner instruction
         const scanInstr = document.querySelector('#scanner-view .scan-instruction');
         if (scanInstr) {
