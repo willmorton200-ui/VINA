@@ -2065,12 +2065,15 @@
                 </div>
 
                 <!-- Переключатель режимов сомелье -->
-                <div style="display: flex; background: #f8f9fa; border-bottom: 1px solid #e9ecef; padding: 6px 12px; gap: 6px;">
+                <div style="display: flex; background: #f8f9fa; border-bottom: 1px solid #e9ecef; padding: 6px 10px; gap: 6px; overflow-x: auto;">
                     <button type="button" class="somm-tab-pill active" id="somm-pill-chat" onclick="switchSommModalTab('chat')" style="flex: 1; padding: 8px 12px; border-radius: 10px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; background: #ffffff; color: #722F37; box-shadow: 0 1px 4px rgba(0,0,0,0.06); display: flex; align-items: center; justify-content: center; gap: 6px;">
                         Диалог
                     </button>
                     <button type="button" class="somm-tab-pill" id="somm-pill-pairing" onclick="switchSommModalTab('pairing')" style="flex: 1; padding: 8px 12px; border-radius: 10px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; background: transparent; color: #6c757d; display: flex; align-items: center; justify-content: center; gap: 6px;">
                         Подбор к блюду
+                    </button>
+                    <button type="button" class="somm-tab-pill" id="somm-pill-world-analogs" onclick="switchSommModalTab('world-analogs')" style="flex: 1; min-width: 135px; padding: 8px 10px; border-radius: 10px; border: none; font-size: 12.5px; font-weight: 600; cursor: pointer; background: transparent; color: #6c757d; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;">
+                        Нероссийские аналоги
                     </button>
                     <button type="button" class="somm-tab-pill" id="somm-pill-toast" onclick="switchSommModalTab('toast')" style="flex: 1; padding: 8px 12px; border-radius: 10px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; background: transparent; color: #6c757d; display: flex; align-items: center; justify-content: center; gap: 6px;">
                         Тосты
@@ -2138,6 +2141,60 @@
                     </div>
 
                     <div id="somm-pairing-results-box"></div>
+                </div>
+
+                <!-- РЕЖИМ 3: НЕРОССИЙСКИЕ АНАЛОГИ (ДВУСТОРОННИЙ ПОДБОР) -->
+                <div id="somm-modal-view-world-analogs" class="somm-modal-view" style="display: none; padding: 16px 18px; overflow-y: auto; flex: 1;">
+                    <!-- Секция 1: Зарубежные аналоги к выбранному российскому вину -->
+                    <div style="background: #ffffff; border: 1px solid #e9ecef; border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 18px;">🌍</span>
+                                <h4 style="margin: 0; font-size: 14.5px; font-weight: 700; color: #1a1a1a;">Мировые аналоги выбранного вина</h4>
+                            </div>
+                            <span id="somm-world-current-wine-tag" style="background: #fdf2f4; color: #722F37; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 10px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+                        </div>
+                        <p style="margin: 0 0 12px 0; font-size: 12px; color: #6c757d; line-height: 1.4;">
+                            Знаменитые зарубежные вина с идентичным сортовым и терруарным профилем (до 3-х эталонов):
+                        </p>
+                        <div id="somm-foreign-analogs-container">
+                            <div style="text-align: center; color: #868e96; font-size: 12.5px; padding: 12px 0;">Загрузка мировых аналогов...</div>
+                        </div>
+                    </div>
+
+                    <!-- Секция 2: Обратный поиск - по названию зарубежного вина -> подбор российских аналогов -->
+                    <div style="background: #ffffff; border: 1px solid #e9ecef; border-radius: 14px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                            <span style="font-size: 18px;">🇷🇺</span>
+                            <h4 style="margin: 0; font-size: 14.5px; font-weight: 700; color: #1a1a1a;">Найти российский аналог зарубежному вину</h4>
+                        </div>
+                        <p style="margin: 0 0 10px 0; font-size: 12px; color: #6c757d; line-height: 1.4;">
+                            Любите Шабли, Кьянти или Бордо? Введите название — сомелье подберет до 3-х лучших российских вин из каталога:
+                        </p>
+
+                        <!-- Строка поиска зарубежного вина -->
+                        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                            <input type="text" id="somm-foreign-search-input" placeholder="Например: Шабли, Кьянти, Бордо, Риоха..." style="flex: 1; border: 1px solid #ced4da; border-radius: 10px; padding: 9px 12px; font-size: 13px; outline: none; background: #fafafa;" onkeydown="if(event.key==='Enter') searchRussianAnalogsForForeign();">
+                            <button type="button" class="btn btn-primary" onclick="searchRussianAnalogsForForeign()" style="border-radius: 10px; padding: 9px 16px; font-weight: 700; font-size: 13px; background: #722F37; color: #fff; border: none; cursor: pointer; white-space: nowrap;">
+                                Найти
+                            </button>
+                        </div>
+
+                        <!-- Быстрые чипсы-примеры зарубежных вин -->
+                        <div style="display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 14px;">
+                            <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('Шабли')">🇫🇷 Шабли</button>
+                            <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('Кьянти')">🇮🇹 Кьянти</button>
+                            <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('Бордо')">🇫🇷 Бордо</button>
+                            <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('Риоха')">🇪🇸 Риоха</button>
+                            <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('Совиньон Блан')">🇳🇿 Совиньон Блан</button>
+                            <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('Просекко')">🇮🇹 Просекко</button>
+                            <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('Бароло')">🇮🇹 Бароло</button>
+                            <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('Мальбек')">🇦🇷 Мальбек</button>
+                        </div>
+
+                        <!-- Контейнер результатов обратного поиска -->
+                        <div id="somm-russian-analogs-results-container"></div>
+                    </div>
                 </div>
 
                 <!-- РЕЖИМ 3: МАСТЕР ТОСТОВ И СОВЕТОВ -->

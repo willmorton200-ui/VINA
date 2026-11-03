@@ -195,6 +195,9 @@ class PairingService:
         scored = [score_bottle(b, self.grapes.by_id[b.grape_id], dish, self.w, self.r) for b in bottles]
         picks = pick_three(scored, self.r)
         cards = [self.bottle_card(sb.bottle, sb.grape, sb, self._line(sb)) for sb in picks]
+        for c, sb in zip(cards, picks):
+            c["pairing_reason"] = self._wine_pairing_rationale(dish.name, c, sb)
+            c["explanation"] = c["pairing_reason"]
         explanation, how = self._explanation(dish.name, cards, picks)
         return self._envelope(
             kind="pairing", scenario=scenario, query=q.as_dict(), dish_profile=dish.as_dict(),
@@ -231,21 +234,77 @@ class PairingService:
                              price_text(c["price_rub"]) if c["price_rub"] else "") if x]
         return f"{c['name']} ({', '.join(extra)})" if extra else c["name"]
 
+    def _wine_pairing_rationale(self, dish_name: str, c: dict, sb: ScoredBottle) -> str:
+        """Формирует индивидуальное, короткое и понятное гастрономическое объяснение для каждого вина."""
+        name = (c.get("name") or "").lower()
+        producer = (c.get("producer") or "").lower()
+        grape = (c.get("grape") or sb.grape.name or "").lower()
+        d_lower = (dish_name or "").lower()
+        is_sweet_wine = bool("мускат" in grape or "ледян" in name or "десерт" in name or "sweet" in name or c.get("sweetness") in (2, 3, "сладкое", "полусладкое"))
+        has_oak = bool(c.get("oak") or "бочк" in name or "дуб" in name)
+        is_sparkling = bool(c.get("sparkling"))
+
+        # 1. Десерты (торт, чизкейк, тирамису, шоколад)
+        if any(w in d_lower for w in ["торт", "чизкейк", "тирамису", "десерт", "сладк", "шоколад"]):
+            if "ледян" in name or "icewine" in name:
+                return "Звонкая морозная кислотность ледяного сбора (Icewine) освежает плотный сливочный сыр чизкейка."
+            elif "красного камня" in name:
+                return "Выдержка в дубе дарит тона чайной розы, цукатов и кураги, благородно аккомпанируя бисквиту и какао."
+            elif "фестивальн" in name or "солнечная долина" in producer:
+                return "Пряные ноты инжира, кураги и меда гармонично звучат с кремовой основой и десертной сладостью."
+            elif "гранд десерт" in name or "grand dessert" in name:
+                return "Натуральная медовая сладость и цветочные оттенки муската создают нежную гармонию со сливочным кремом."
+            elif "дивноморск" in producer or "ottonel" in name:
+                return "Тонкий мускатный аромат белых цветов и цитрусов оставляет легкое и воздушное послевкусие."
+            elif "золотая балка" in producer or "балаклава" in name:
+                return "Мягкая фруктовая сладость подчеркивает ягодные и бисквитные слои десерта, не утяжеляя нёбо."
+            elif has_oak:
+                return "Ванильно-древесные тона бочки резонируют с кофейными и шоколадными слоями тирамису."
+            elif is_sparkling:
+                return "Игристый перляж деликатно очищает рецепторы от сладости, даря воздушный контраст."
+            else:
+                return "Натуральная медовая сладость и цветочный букет образуют мягкую вкусовую гармонию с десертом."
+
+        # 2. Мясо / стейк / гриль
+        if any(w in d_lower for w in ["стейк", "мясо", "говядин", "гриль", "шашлык", "баранин"]):
+            if "красностоп" in grape or "саперави" in grape:
+                return "Мощные природные танины автохтона связываются с белком мяса, делая каждый кусочек нежнее."
+            elif has_oak:
+                return "Танины дубовой бочки и пряный букет усиливают аромат аппетитной корочки на углях."
+            else:
+                return "Живая ягодная кислотность и бархатные танины растворяют плотный мясной сок и жир."
+
+        # 3. Рыба и морепродукты
+        if any(w in d_lower for w in ["рыб", "кревет", "устриц", "лосос", "форел", "морепродукт"]):
+            if is_sparkling:
+                return "Игристые пузырьки и морская минеральность смывают маслянистость и подчеркивают чистый вкус рыбы."
+            elif has_oak:
+                return "Сливочная текстура бочки великолепно поддерживает горячие рыбные стейки и сливочные соусы."
+            else:
+                return "Звонкая цитрусовая кислотность работает как капля свежего лимона, подчеркивая природный вкус рыбы."
+
+        # 4. Сыры
+        if any(w in d_lower for w in ["сыр", "бри", "камамбер", "пармезан"]):
+            if is_sweet_wine:
+                return "Классический контраст: благородная соль сыра смягчается натуральной сладостью вина."
+            else:
+                return "Сбалансированная кислотность очищает нёбо от сырной маслянистости, сохраняя сливочный вкус."
+
+        # 5. Универсальный фолбэк по профилю
+        factors = [f["text"] for f in getattr(sb, "factors", []) if f.get("points", 0) > 0]
+        if factors:
+            return factors[0].capitalize() + "."
+        return "Сбалансированное тело и кислотность создают цельный вкусовой ансамбль с блюдом."
+
     def _template(self, dish_name: str, cards: list[dict], picks: list[ScoredBottle]) -> str:
         if not cards:
             return "Подходящих российских вин в каталоге не нашлось — попробуйте смягчить условия (цвет, сладость)."
-        parts = [f"К блюду «{dish_name}»:"]
-        story_used = False
-        for c, sb in zip(cards, picks, strict=True):
-            s = f"{self._title(c)} — {'; '.join(self._reasons(sb))}."
-            if c.get("story") and not story_used:
-                s += " " + first_sentence(c["story"])
-                story_used = True
-            parts.append(s)
-        text = " ".join(parts)
-        if len(text) > 600:   # сначала убираем историю и доводы — названия и цены остаются всегда
-            text = " ".join([parts[0]] + [f"{self._title(c)}." for c in cards])
-        return text[:600]
+        lines = [f"К блюду «{dish_name}»:\n"]
+        for i, (c, sb) in enumerate(zip(cards, picks, strict=True), 1):
+            score = int(c.get("score") or sb.score or 75)
+            reason = c.get("pairing_reason") or self._wine_pairing_rationale(dish_name, c, sb)
+            lines.append(f"• **{self._title(c)}** — {reason}")
+        return "\n\n".join(lines)
 
     def _explanation(self, dish_name: str, cards: list[dict], picks: list[ScoredBottle]) -> tuple[str, str]:
         template = self._template(dish_name, cards, picks)

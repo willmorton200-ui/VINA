@@ -177,9 +177,20 @@ ROLE_LABEL = {"best_match": "Лучшее сочетание", "other_grape": "�
 
 
 def pick_three(scored: list[ScoredBottle], r: dict) -> list[ScoredBottle]:
-    """Три российские бутылки без повторов: лучшее сочетание, лучшая бутылка другого сорта, вариант в другой цене
-    (если цены известны) или ещё один сорт / винодельня."""
-    ranked = sorted((s for s in scored if s.score >= r["min_grape_score"]), key=lambda s: (-s.score, s.bottle.price_rub or 0, s.bottle.slug))
+    """Три российские бутылки без повторов: лучшее сочетание, лучшая бутылка другого сорта, вариант в другой цене.
+    Для широкого охвата ассортимента рандомизирует выборку среди близких по баллам кандидатов."""
+    eligible = [s for s in scored if s.score >= r["min_grape_score"]]
+    if not eligible:
+        return []
+    
+    import random
+    max_score = max(s.score for s in eligible)
+    # Кандидаты с близким высоким баллом (в пределах 7.5% от топа) перемешиваются для разнообразия ассортимента
+    tier_top = [s for s in eligible if s.score >= max_score - 7.5]
+    tier_rest = [s for s in eligible if s.score < max_score - 7.5]
+
+    random.shuffle(tier_top)
+    ranked = sorted(tier_top, key=lambda s: -(s.score + random.uniform(-3.5, 3.5))) + sorted(tier_rest, key=lambda s: -s.score)
     return diverse(ranked, r["top_bottles"], r["other_price_min_ratio"])
 
 

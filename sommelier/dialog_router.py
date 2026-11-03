@@ -157,3 +157,70 @@ async def wine_alternatives(
         items.append(SommelierAlternative(**{**item, "image_url": img_url}))
 
     return SommelierAlternativesResponse(kind=result["kind"], id=result.get("id"), items=items)
+
+
+@router.get("/world-analogs/for-wine/{slug}")
+async def get_world_analogs_for_wine(slug: str, request: Request, top_k: int = Query(3, ge=1, le=3)) -> dict:
+    """Подбирает до 3-х зарубежных мировых аналогов к выбранному российскому вину (slug)."""
+    service = _service(request)
+    from sommelier.i18n import get_request_lang
+    cur_lang = get_request_lang(request)
+
+    target_wine = None
+    catalog = getattr(request.app.state, "catalog", None)
+    if catalog and hasattr(catalog, "wines_by_slug") and slug in catalog.wines_by_slug:
+        cw = catalog.wines_by_slug[slug]
+        if hasattr(cw, "as_dict"):
+            target_wine = cw.as_dict()
+        elif hasattr(cw, "__dict__"):
+            target_wine = cw.__dict__
+        else:
+            target_wine = cw
+    elif service.wines:
+        for w in service.wines:
+            if (w.get("id") or w.get("slug")) == slug:
+                target_wine = w
+                break
+
+    if not target_wine:
+        if service.wines:
+            target_wine = service.wines[0]
+        else:
+            raise HTTPException(status_code=404, detail=f"Wine with slug '{slug}' not found")
+
+    from sommelier.world_analogs import find_foreign_analogs_for_russian_wine
+    analogs = await run_in_threadpool(find_foreign_analogs_for_russian_wine, target_wine, top_k, cur_lang)
+    wine_name = target_wine.get("name") if isinstance(target_wine, dict) else getattr(target_wine, "name", slug)
+
+    return {
+        "wine_slug": slug,
+        "wine_name": wine_name,
+        "analogs": analogs,
+        "total": len(analogs),
+    }
+
+
+@router.post("/world-analogs/search-foreign")
+async def search_russian_analogs_for_foreign(payload: dict, request: Request) -> dict:
+    """Поиск до 3-х российских вин-аналогов из каталога по названию иностранного вина."""
+    service = _service(request)
+    from sommelier.i18n import get_request_lang
+    cur_lang = get_request_lang(request, payload.get("lang"))
+    query = (payload.get("query") or "").strip()
+    top_k = min(3, max(1, int(payload.get("top_k", 3))))
+
+    from sommelier.world_analogs import find_russian_analogs_for_foreign_query
+    catalog_wines = service.wines or []
+    result = await run_in_threadpool(find_russian_analogs_for_foreign_query, query, catalog_wines, top_k, cur_lang)
+
+    for r in result.get("russian_analogs", []):
+        r_slug = r.get("id") or r.get("slug")
+        r["image_url"] = _resolve_image_url(request, r_slug) or f"/api/image/{r_slug}"
+
+    return result
+
+
+@router.get("/world-analogs/search-foreign")
+async def search_russian_analogs_for_foreign_get(query: str, request: Request, top_k: int = Query(3, ge=1, le=3)) -> dict:
+    return await search_russian_analogs_for_foreign({"query": query, "top_k": top_k}, request)
+
