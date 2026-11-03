@@ -3341,16 +3341,18 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    font-size: 20px;
+    gap: 7px;
+    margin: 0 14px;
+    font-size: 17px;
     font-weight: 700;
-    color: var(--primary, #800020);
-    letter-spacing: -0.3px;
+    color: var(--primary, #722F37);
+    letter-spacing: -0.2px;
+    white-space: nowrap;
 }
 
 .header-brand-znak {
-    width: 30px;
-    height: 30px;
+    width: 25px;
+    height: 25px;
     object-fit: contain;
     border-radius: 50%;
     flex-shrink: 0;

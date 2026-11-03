@@ -6,37 +6,137 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Свое вино | Сканер, Каталог, Карта и Сомелье</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="scanner.css?v=50_colorfilter">
+    <link rel="stylesheet" href="scanner.css?v=51_header_harmony">
     <style>
+        /* ---------------------------------------------------- */
+        /* ОБЩАЯ ШАПКА: ГАРМОНИЧНОЕ РАСПРЕДЕЛЕНИЕ И ПРОПОРЦИИ   */
+        /* ---------------------------------------------------- */
+        .header.home-unified-header {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            padding: 10px 14px !important;
+            margin: 12px 14px 0 14px !important;
+            background: #ffffff !important;
+            border-radius: 18px !important;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05) !important;
+            box-sizing: border-box !important;
+            gap: 6px !important;
+        }
+
+        .header-left-slot {
+            flex: 1 1 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            min-width: 0 !important;
+        }
+
+        .server-status {
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 5px !important;
+            background: #f1f3f5 !important;
+            padding: 4px 8px !important;
+            border-radius: 20px !important;
+            font-size: 11.5px !important;
+            font-weight: 500 !important;
+            color: #495057 !important;
+            flex-shrink: 0 !important;
+            cursor: pointer !important;
+        }
+
+        .header-center-logo {
+            flex: 0 0 auto !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 7px !important;
+            margin: 0 14px !important; /* Гарантированный свободный воздух между 'Свое вино' и 'Рус' */
+            font-size: 17px !important;
+            font-weight: 700 !important;
+            color: #722F37 !important;
+            letter-spacing: -0.2px !important;
+            white-space: nowrap !important;
+            cursor: pointer !important;
+        }
+
+        .header-brand-znak {
+            width: 25px !important;
+            height: 25px !important;
+            object-fit: contain !important;
+            border-radius: 50% !important;
+            flex-shrink: 0 !important;
+        }
+
+        .header-center-detail {
+            flex: 0 0 auto !important;
+            margin: 0 12px !important;
+        }
+
+        .header-right-slot {
+            flex: 1 1 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-end !important;
+            gap: 8px !important;
+            min-width: 0 !important;
+        }
+
         .vina-lang-switcher {
-            display: inline-flex;
-            align-items: center;
-            background: #f1f3f5;
-            border: 1px solid #e2e5e9;
-            border-radius: 20px;
-            padding: 2px;
-            gap: 2px;
-            user-select: none;
-            flex-shrink: 0;
+            display: inline-flex !important;
+            align-items: center !important;
+            background: #f1f3f5 !important;
+            border: 1px solid #e2e5e9 !important;
+            border-radius: 18px !important;
+            padding: 2px !important;
+            gap: 2px !important;
+            user-select: none !important;
+            flex-shrink: 0 !important;
         }
+
         .vina-lang-btn {
-            border: none;
-            background: transparent;
-            color: #555555;
-            font-size: 11.5px;
-            font-weight: 600;
-            padding: 4px 8px;
-            border-radius: 16px;
-            cursor: pointer;
-            line-height: 1.1;
-            transition: all 0.18s ease;
-            font-family: inherit;
+            border: none !important;
+            background: transparent !important;
+            color: #555555 !important;
+            font-size: 11px !important;
+            font-weight: 600 !important;
+            padding: 3.5px 7.5px !important;
+            border-radius: 14px !important;
+            cursor: pointer !important;
+            line-height: 1.1 !important;
+            transition: all 0.18s ease !important;
+            font-family: inherit !important;
         }
+
         .vina-lang-btn.active {
-            background: #722F37;
-            color: #ffffff;
-            box-shadow: 0 2px 6px rgba(114, 47, 55, 0.28);
+            background: #722F37 !important;
+            color: #ffffff !important;
+            box-shadow: 0 2px 6px rgba(114, 47, 55, 0.28) !important;
         }
+
+        .header-map-circle-btn {
+            width: 33px !important;
+            height: 33px !important;
+            border-radius: 50% !important;
+            background: #f7f7f8 !important;
+            border: 1px solid #eceef2 !important;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05) !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            cursor: pointer !important;
+            flex-shrink: 0 !important;
+            color: #1a1a1a !important;
+            transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+        }
+
+        .header-map-circle-btn svg {
+            width: 17px !important;
+            height: 17px !important;
+        }
+
+        /* Заставка +18 (Splash Screen) */
         .vina-lang-switcher--splash {
             position: absolute;
             top: 18px;
@@ -47,39 +147,21 @@
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
             padding: 3px;
+            border-radius: 20px;
         }
+
         .vina-lang-switcher--splash .vina-lang-btn {
-            color: rgba(255, 255, 255, 0.88);
-            font-size: 13px;
-            padding: 5px 12px;
+            color: rgba(255, 255, 255, 0.88) !important;
+            font-size: 12.5px !important;
+            padding: 4px 11px !important;
+            border-radius: 16px !important;
         }
+
         .vina-lang-switcher--splash .vina-lang-btn.active {
-            background: #ffffff;
-            color: #722F37;
-            font-weight: 700;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
-        }
-        .vina-lang-switcher--hero {
-            display: inline-flex;
-            margin-bottom: 14px;
-            background: rgba(20, 20, 22, 0.68);
-            border: 1px solid rgba(255, 255, 255, 0.35);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            padding: 3px;
-            border-radius: 22px;
-        }
-        .vina-lang-switcher--hero .vina-lang-btn {
-            color: rgba(255, 255, 255, 0.88);
-            font-size: 13.5px;
-            padding: 6px 14px;
-            border-radius: 18px;
-        }
-        .vina-lang-switcher--hero .vina-lang-btn.active {
-            background: #ffffff;
-            color: #722F37;
-            font-weight: 700;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+            background: #ffffff !important;
+            color: #722F37 !important;
+            font-weight: 700 !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28) !important;
         }
     </style>
 
@@ -351,10 +433,6 @@
             </div>
 
             <div class="age-gate-bottom-content">
-                <div class="vina-lang-switcher vina-lang-switcher--hero" role="group" aria-label="Выбор языка / Language">
-                    <button type="button" class="vina-lang-btn active" data-lang="ru" onclick="window.setAppLang('ru')">Рус</button>
-                    <button type="button" class="vina-lang-btn" data-lang="en" onclick="window.setAppLang('en')">Eng</button>
-                </div>
                 <h1 class="age-gate-title">Добро пожаловать<br>в Свое вино</h1>
                 <p class="age-gate-subtitle">Пожалуйста, подтвердите ваш возраст</p>
                 <button type="button" class="age-gate-btn" id="btn-age-confirm" onclick="goToSplashStep2()">Мне есть 18</button>
