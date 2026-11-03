@@ -977,16 +977,17 @@ def find_foreign_analogs_for_russian_wine(wine: dict, top_k: int = 3, lang: str 
     w_name = (wine.get("name") or "").lower()
     w_color = (wine.get("color") or wine.get("category") or "").lower()
     w_cat = (wine.get("category") or "").lower()
+    w_sugar = str(wine.get("sugar") or wine.get("sweetness") or "").lower()
     w_grape = (wine.get("grape") or "").lower()
     w_desc = (wine.get("description") or "").lower()
     w_feat = wine.get("features") or {}
-    w_all = f"{w_name} {w_color} {w_cat} {w_grape} {w_desc}".lower()
+    w_all = f"{w_name} {w_color} {w_cat} {w_sugar} {w_grape} {w_desc}".lower()
 
-    is_sparkling = bool(w_feat.get("sparkling")) or "игрист" in w_all or "брют" in w_all
-    is_fortified = "мадер" in w_all or "портвейн" in w_all or "креплен" in w_all or "десертн" in w_all
-    is_white = "бел" in w_color or "бел" in w_cat or "white" in w_cat
-    is_red = "красн" in w_color or "красн" in w_cat or "red" in w_cat
-    is_rose = "розов" in w_color or "розов" in w_cat or "rose" in w_cat
+    is_sparkling = bool(w_feat.get("sparkling")) or "игрист" in w_all or "брют" in w_all or "brut" in w_all or "sparkl" in w_all or "шампан" in w_all or "prosecco" in w_all or "cava" in w_all
+    is_fortified = "мадер" in w_all or "портвейн" in w_all or "креплен" in w_all or "десертн" in w_all or "porto" in w_all or "madeira" in w_all
+    is_rose = "розов" in w_color or "розов" in w_cat or "rose" in w_all or "розе" in w_all
+    is_white = ("бел" in w_color or "бел" in w_cat or "white" in w_cat) and not is_rose
+    is_red = ("красн" in w_color or "красн" in w_cat or "red" in w_cat) and not is_rose
     has_oak = bool(w_feat.get("oak") or "бочк" in w_desc or "дуб" in w_desc)
 
     scored_benchmarks = []
