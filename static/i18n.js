@@ -1314,6 +1314,12 @@
             window.load5NearbyWalkingStores();
         }
 
+        // 10. Re-render Sommelier World Analogs if active
+        const worldView = document.getElementById('somm-modal-view-world-analogs');
+        if (worldView && worldView.style.display !== 'none' && typeof window.loadWorldAnalogsView === 'function') {
+            window.loadWorldAnalogsView();
+        }
+
         // 10. Dispatch custom event
         try {
             window.dispatchEvent(new CustomEvent('vina-lang-change', { detail: { lang: normalized } }));

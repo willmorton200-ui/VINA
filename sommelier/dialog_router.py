@@ -182,6 +182,24 @@ async def get_world_analogs_for_wine(slug: str, request: Request, top_k: int = Q
                 target_wine = w
                 break
 
+    if not target_wine and service.wines:
+        s_clean = slug.strip().lower().replace("-", " ")
+        # 1. Точное совпадение по ID или названию
+        for w in service.wines:
+            w_id = (w.get("id") or w.get("slug") or "").lower()
+            w_name = (w.get("name") or "").lower()
+            if w_id == slug.lower() or w_name == slug.lower():
+                target_wine = w
+                break
+        # 2. Подстрочное совпадение по ID или названию
+        if not target_wine:
+            for w in service.wines:
+                w_id = (w.get("id") or w.get("slug") or "").lower().replace("-", " ")
+                w_name = (w.get("name") or "").lower()
+                if s_clean in w_id or s_clean in w_name or w_name in s_clean:
+                    target_wine = w
+                    break
+
     if not target_wine:
         if service.wines:
             target_wine = service.wines[0]

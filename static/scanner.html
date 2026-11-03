@@ -1028,18 +1028,15 @@
                 <span>Свое вино</span>
             </div>
 
-            <!-- Заголовок карточки товара: Артикул + Поделиться ссылкой -->
-            <div class="header-center-detail" id="header-center-detail" style="display: none; align-items: center; gap: 8px;">
-                <span class="detail-header-article" id="detail-header-article">Арт. 482910</span>
-                <button type="button" class="header-share-btn" id="btn-header-share" onclick="shareCurrentWine()" title="Поделиться ссылкой">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="18" cy="5" r="3"></circle>
-                        <circle cx="6" cy="12" r="3"></circle>
-                        <circle cx="18" cy="19" r="3"></circle>
-                        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-                        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+            <!-- Заголовок карточки товара: Ссылка на вино (на месте артикула) -->
+            <div class="header-center-detail" id="header-center-detail" style="display: none; align-items: center;">
+                <button type="button" class="header-share-btn" id="btn-header-share" onclick="shareCurrentWine()" title="Ссылка на вино" aria-label="Ссылка на вино" style="width: 32px; height: 32px; border-radius: 50%; border: 1px solid #e2e5e9; background: #ffffff; display: inline-flex; align-items: center; justify-content: center; color: #722F37; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: all 0.2s;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                     </svg>
                 </button>
+                <span class="detail-header-article" id="detail-header-article" style="display: none;"></span>
             </div>
 
             <div class="header-right-slot" style="display: flex; align-items: center; gap: 8px;">
@@ -1760,6 +1757,8 @@
                         </button>
                         <img id="detail-wine-img" src="" alt="Бутылка вина" class="detail-wine-bottle-full">
                     </div>
+                    <!-- Артикул под бутылкой мелким шрифтом -->
+                    <div id="detail-wine-sku-under-bottle" style="text-align: center; font-size: 11.5px; color: #868e96; margin-top: 6px; margin-bottom: 8px; font-weight: 500; letter-spacing: 0.3px;"></div>
 
                     <!-- 2. Производитель, Название вина, Теги -->
                     <div class="detail-wine-meta" style="margin-bottom: 12px;">
@@ -2149,12 +2148,14 @@
                     <div style="background: #ffffff; border: 1px solid #e9ecef; border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
                             <div style="display: flex; align-items: center; gap: 8px;">
-                                <span style="font-size: 18px;">🌍</span>
-                                <h4 style="margin: 0; font-size: 14.5px; font-weight: 700; color: #1a1a1a;">Мировые аналоги выбранного вина</h4>
+                                <div style="width: 26px; height: 26px; border-radius: 50%; background: #fdf2f4; border: 1px solid #f8d7da; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                    <img src="svg/public-rating.svg" style="width: 16px; height: 16px; object-fit: contain;" alt="Сомелье">
+                                </div>
+                                <h4 id="somm-world-sec1-title" style="margin: 0; font-size: 14.5px; font-weight: 700; color: #1a1a1a;">Мировые аналоги выбранного вина</h4>
                             </div>
                             <span id="somm-world-current-wine-tag" style="background: #fdf2f4; color: #722F37; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 10px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
                         </div>
-                        <p style="margin: 0 0 12px 0; font-size: 12px; color: #6c757d; line-height: 1.4;">
+                        <p id="somm-world-sec1-sub" style="margin: 0 0 12px 0; font-size: 12px; color: #6c757d; line-height: 1.4;">
                             Знаменитые зарубежные вина с идентичным сортовым и терруарным профилем (до 3-х эталонов):
                         </p>
                         <div id="somm-foreign-analogs-container">
@@ -2165,32 +2166,25 @@
                     <!-- Секция 2: Обратный поиск - по названию зарубежного вина -> подбор российских аналогов -->
                     <div style="background: #ffffff; border: 1px solid #e9ecef; border-radius: 14px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
                         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                            <span style="font-size: 18px;">🇷🇺</span>
-                            <h4 style="margin: 0; font-size: 14.5px; font-weight: 700; color: #1a1a1a;">Найти российский аналог зарубежному вину</h4>
+                            <div style="width: 26px; height: 26px; border-radius: 50%; background: #fdf2f4; border: 1px solid #f8d7da; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                <img src="svg/public-rating.svg" style="width: 16px; height: 16px; object-fit: contain;" alt="Сомелье">
+                            </div>
+                            <h4 id="somm-world-sec2-title" style="margin: 0; font-size: 14.5px; font-weight: 700; color: #1a1a1a;">Найти российский аналог зарубежному вину</h4>
                         </div>
-                        <p style="margin: 0 0 10px 0; font-size: 12px; color: #6c757d; line-height: 1.4;">
+                        <p id="somm-world-sec2-sub" style="margin: 0 0 10px 0; font-size: 12px; color: #6c757d; line-height: 1.4;">
                             Любите Шабли, Кьянти или Бордо? Введите название — сомелье подберет до 3-х лучших российских вин из каталога:
                         </p>
 
                         <!-- Строка поиска зарубежного вина -->
                         <div style="display: flex; gap: 8px; margin-bottom: 10px;">
                             <input type="text" id="somm-foreign-search-input" placeholder="Например: Шабли, Кьянти, Бордо, Риоха..." style="flex: 1; border: 1px solid #ced4da; border-radius: 10px; padding: 9px 12px; font-size: 13px; outline: none; background: #fafafa;" onkeydown="if(event.key==='Enter') searchRussianAnalogsForForeign();">
-                            <button type="button" class="btn btn-primary" onclick="searchRussianAnalogsForForeign()" style="border-radius: 10px; padding: 9px 16px; font-weight: 700; font-size: 13px; background: #722F37; color: #fff; border: none; cursor: pointer; white-space: nowrap;">
+                            <button type="button" class="btn btn-primary" id="somm-foreign-search-btn" onclick="searchRussianAnalogsForForeign()" style="border-radius: 10px; padding: 9px 16px; font-weight: 700; font-size: 13px; background: #722F37; color: #fff; border: none; cursor: pointer; white-space: nowrap;">
                                 Найти
                             </button>
                         </div>
 
                         <!-- Быстрые чипсы-примеры зарубежных вин -->
-                        <div style="display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 14px;">
-                            <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('Шабли')">🇫🇷 Шабли</button>
-                            <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('Кьянти')">🇮🇹 Кьянти</button>
-                            <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('Бордо')">🇫🇷 Бордо</button>
-                            <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('Риоха')">🇪🇸 Риоха</button>
-                            <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('Совиньон Блан')">🇳🇿 Совиньон Блан</button>
-                            <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('Просекко')">🇮🇹 Просекко</button>
-                            <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('Бароло')">🇮🇹 Бароло</button>
-                            <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('Мальбек')">🇦🇷 Мальбек</button>
-                        </div>
+                        <div id="somm-foreign-chips-container" style="display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 14px;"></div>
 
                         <!-- Контейнер результатов обратного поиска -->
                         <div id="somm-russian-analogs-results-container"></div>
@@ -5088,10 +5082,13 @@
             if (detailHdrEl) detailHdrEl.style.display = 'flex';
             if (stickyBar) stickyBar.classList.add('visible');
 
-            // Артикул (вычисляем стабильный 6-значный артикул от слага)
+            // Артикул под бутылкой мелким шрифтом
             const artNum = Math.abs(slug.split('').reduce((acc, c) => (acc << 5) - acc + c.charCodeAt(0), 0)) % 900000 + 100000;
+            const isEn = window.getAppLang && window.getAppLang() === 'en';
+            const skuUnderBottle = document.getElementById('detail-wine-sku-under-bottle');
+            if (skuUnderBottle) skuUnderBottle.textContent = (isEn ? 'SKU: ' : 'Артикул: ') + artNum;
             const artEl = document.getElementById('detail-header-article');
-            if (artEl) artEl.textContent = 'Арт. ' + artNum;
+            if (artEl) artEl.textContent = '';
 
             // Настройка заголовков возврата
             const backTxt = document.getElementById('detail-back-text');
