@@ -53,10 +53,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return '';
     }
 
-    function apiUrl(path) {
+    window.apiUrl = function(path) {
         const base = getApiBase();
         if (!path.startsWith('/')) path = '/' + path;
         return base ? `${base}${path}` : path;
+    };
+    function apiUrl(path) {
+        return window.apiUrl(path);
     }
 
     // --- DOM Elements ---
@@ -2936,130 +2939,157 @@ document.addEventListener('DOMContentLoaded', () => {
     // =====================================================================
     // НЕРОССИЙСКИЕ АНАЛОГИ (МИРОВЫЕ ВИННЫЕ БЛИЗНЕЦЫ)
     // =====================================================================
-    window.loadWorldAnalogsView = function() {
-        const isEn = window.getAppLang && window.getAppLang() === 'en';
-        
-        // 1. Динамическая локализация заголовков, подсказок и кнопки поиска
-        const s1Title = document.getElementById('somm-world-sec1-title');
-        if (s1Title) s1Title.textContent = isEn ? 'World Analogs of Selected Wine' : 'Мировые аналоги выбранного вина';
-
-        const s1Sub = document.getElementById('somm-world-sec1-sub');
-        if (s1Sub) s1Sub.textContent = isEn 
-            ? 'Famous world benchmarks with matching terroir and sensory profiles (up to 3 wines):' 
-            : 'Знаменитые зарубежные вина с идентичным сортовым и терруарным профилем (до 3-х эталонов):';
-
-        const s2Title = document.getElementById('somm-world-sec2-title');
-        if (s2Title) s2Title.textContent = isEn ? 'Find Russian Twins for Foreign Wines' : 'Найти российский аналог зарубежному вину';
-
-        const s2Sub = document.getElementById('somm-world-sec2-sub');
-        if (s2Sub) s2Sub.textContent = isEn
-            ? 'Love Chablis, Chianti or Bordeaux? Enter the name — sommelier will pick up to 3 best Russian twins from the catalog:'
-            : 'Любите Шабли, Кьянти или Бордо? Введите название — сомелье подберет до 3-х лучших российских вин из каталога:';
-
-        const searchBtn = document.getElementById('somm-foreign-search-btn');
-        if (searchBtn) searchBtn.textContent = isEn ? 'Find' : 'Найти';
-
-        const searchInp = document.getElementById('somm-foreign-search-input');
-        if (searchInp) searchInp.placeholder = isEn ? 'e.g. Chablis, Chianti, Bordeaux, Rioja...' : 'Например: Шабли, Кьянти, Бордо, Риоха...';
-
-        const chipsContainer = document.getElementById('somm-foreign-chips-container');
-        if (chipsContainer) {
-            const chips = isEn ? [
-                { query: 'Chablis', label: '🇫🇷 Chablis' },
-                { query: 'Chianti', label: '🇮🇹 Chianti' },
-                { query: 'Bordeaux', label: '🇫🇷 Bordeaux' },
-                { query: 'Rioja', label: '🇪🇸 Rioja' },
-                { query: 'Sauvignon Blanc', label: '🇳🇿 Sauvignon Blanc' },
-                { query: 'Prosecco', label: '🇮🇹 Prosecco' },
-                { query: 'Barolo', label: '🇮🇹 Barolo' },
-                { query: 'Malbec', label: '🇦🇷 Malbec' }
-            ] : [
-                { query: 'Шабли', label: '🇫🇷 Шабли' },
-                { query: 'Кьянти', label: '🇮🇹 Кьянти' },
-                { query: 'Бордо', label: '🇫🇷 Бордо' },
-                { query: 'Риоха', label: '🇪🇸 Риоха' },
-                { query: 'Совиньон Блан', label: '🇳🇿 Совиньон Блан' },
-                { query: 'Просекко', label: '🇮🇹 Просекко' },
-                { query: 'Бароло', label: '🇮🇹 Бароло' },
-                { query: 'Мальбек', label: '🇦🇷 Мальбек' }
-            ];
-            chipsContainer.innerHTML = chips.map(c => `
-                <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('${escapeSommHtml(c.query)}')">${c.label}</button>
-            `).join('');
-        }
-
-        // 2. Определение текущего вина
-        const wineSlug = window.currentSommelierSlug;
-        const wineData = window.currentSommelierWineData;
-
-        let targetSlug = wineSlug;
-        let displayName = (wineData && (wineData.name || wineData.title)) || '';
-
-        if (!targetSlug || targetSlug === 'main-home' || targetSlug === 'all') {
-            if (window.currentDetailWineSlug) {
-                targetSlug = window.currentDetailWineSlug;
+    window.resolveSommApiUrl = function(path) {
+        try {
+            if (typeof window.apiUrl === 'function') {
+                return window.apiUrl(path);
             }
+            if (typeof apiUrl === 'function') {
+                return apiUrl(path);
+            }
+            let base = '';
+            if (typeof getApiBase === 'function') base = getApiBase();
+            if (!base) {
+                const saved = localStorage.getItem('vina_api_url');
+                if (saved) base = saved.trim().replace(/\/+$/, '');
+            }
+            if (!path.startsWith('/')) path = '/' + path;
+            return base ? `${base}${path}` : path;
+        } catch(e) {
+            return path;
         }
+    };
 
-        const detailTitle = document.getElementById('detail-wine-title')?.textContent?.trim();
-        if (detailTitle && (!displayName || displayName === 'Персональный ИИ-Сомелье' || displayName === 'Personal AI Sommelier')) {
-            displayName = detailTitle;
-        }
+    window.loadWorldAnalogsView = function() {
+        try {
+            const isEn = window.getAppLang && window.getAppLang() === 'en';
 
-        if (!targetSlug || targetSlug === 'main-home' || targetSlug === 'all') {
-            targetSlug = 'loco-cimbali-blanc-de-neige-shardone-beloe-suhoe-131';
-            displayName = displayName || 'Loco Cimbali Blanc de Neige';
-        }
+            // 1. Динамическая локализация заголовков, подсказок и кнопки поиска
+            const s1Title = document.getElementById('somm-world-sec1-title');
+            if (s1Title) s1Title.textContent = isEn ? 'World Analogs of Selected Wine' : 'Мировые аналоги выбранного вина';
 
-        const tagEl = document.getElementById('somm-world-current-wine-tag');
-        if (tagEl) {
-            tagEl.textContent = displayName || targetSlug;
-            tagEl.title = displayName || targetSlug;
-        }
+            const s1Sub = document.getElementById('somm-world-sec1-sub');
+            if (s1Sub) s1Sub.textContent = isEn 
+                ? 'Famous world benchmarks with matching terroir and sensory profiles (up to 3 wines):' 
+                : 'Знаменитые зарубежные вина с идентичным сортовым и терруарным профилем (до 3-х эталонов):';
 
-        // 3. Запрос мировых аналогов к выбранному вину с apiUrl(...)
-        const container = document.getElementById('somm-foreign-analogs-container');
-        if (container) {
-            container.innerHTML = `<div style="text-align: center; color: #868e96; font-size: 12.5px; padding: 14px 0;">${isEn ? 'Finding world twins...' : 'Подбираем мировые аналоги...'}</div>`;
+            const s2Title = document.getElementById('somm-world-sec2-title');
+            if (s2Title) s2Title.textContent = isEn ? 'Find Russian Twins for Foreign Wines' : 'Найти российский аналог зарубежному вину';
 
-            const reqUrl = apiUrl(`/api/sommelier/world-analogs/for-wine/${encodeURIComponent(targetSlug)}${isEn ? '?lang=en' : ''}`);
-            fetch(reqUrl)
-                .then(r => {
-                    if (!r.ok) throw new Error('Status ' + r.status);
-                    return r.json();
-                })
-                .then(data => {
-                    if (!data.analogs || data.analogs.length === 0) {
-                        container.innerHTML = `<div style="text-align: center; color: #868e96; font-size: 12.5px; padding: 10px 0;">${isEn ? 'No direct foreign analogs found.' : 'Аналоги не найдены.'}</div>`;
-                        return;
-                    }
-                    let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
-                    data.analogs.slice(0, 3).forEach(a => {
-                        const score = a.similarity || 90;
-                        html += `
-                            <div style="background: #fafafa; border: 1px solid #f1f3f5; border-radius: 12px; padding: 12px 14px; transition: box-shadow 0.2s;">
-                                <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 4px;">
-                                    <div style="font-weight: 700; font-size: 14px; color: #1a1a1a;">
-                                        <span style="font-size: 16px; margin-right: 4px;">${a.flag || '🍷'}</span> ${escapeSommHtml(a.name)}
+            const s2Sub = document.getElementById('somm-world-sec2-sub');
+            if (s2Sub) s2Sub.textContent = isEn
+                ? 'Love Chablis, Chianti or Bordeaux? Enter the name — sommelier will pick up to 3 best Russian twins from the catalog:'
+                : 'Любите Шабли, Кьянти или Бордо? Введите название — сомелье подберет до 3-х лучших российских вин из каталога:';
+
+            const searchBtn = document.getElementById('somm-foreign-search-btn');
+            if (searchBtn) searchBtn.textContent = isEn ? 'Find' : 'Найти';
+
+            const searchInp = document.getElementById('somm-foreign-search-input');
+            if (searchInp) searchInp.placeholder = isEn ? 'e.g. Chablis, Chianti, Bordeaux, Rioja...' : 'Например: Шабли, Кьянти, Бордо, Риоха...';
+
+            const chipsContainer = document.getElementById('somm-foreign-chips-container');
+            if (chipsContainer) {
+                const chips = isEn ? [
+                    { query: 'Chablis', label: '🇫🇷 Chablis' },
+                    { query: 'Chianti', label: '🇮🇹 Chianti' },
+                    { query: 'Bordeaux', label: '🇫🇷 Bordeaux' },
+                    { query: 'Rioja', label: '🇪🇸 Rioja' },
+                    { query: 'Sauvignon Blanc', label: '🇳🇿 Sauvignon Blanc' },
+                    { query: 'Prosecco', label: '🇮🇹 Prosecco' },
+                    { query: 'Barolo', label: '🇮🇹 Barolo' },
+                    { query: 'Malbec', label: '🇦🇷 Malbec' }
+                ] : [
+                    { query: 'Шабли', label: '🇫🇷 Шабли' },
+                    { query: 'Кьянти', label: '🇮🇹 Кьянти' },
+                    { query: 'Бордо', label: '🇫🇷 Бордо' },
+                    { query: 'Риоха', label: '🇪🇸 Риоха' },
+                    { query: 'Совиньон Блан', label: '🇳🇿 Совиньон Блан' },
+                    { query: 'Просекко', label: '🇮🇹 Просекко' },
+                    { query: 'Бароло', label: '🇮🇹 Бароло' },
+                    { query: 'Мальбек', label: '🇦🇷 Мальбек' }
+                ];
+                chipsContainer.innerHTML = chips.map(c => `
+                    <button type="button" class="somm-chip-btn" onclick="selectForeignWineChip('${escapeSommHtml(c.query)}')">${c.label}</button>
+                `).join('');
+            }
+
+            // 2. Определение текущего вина
+            const wineSlug = window.currentSommelierSlug;
+            const wineData = window.currentSommelierWineData;
+
+            let targetSlug = wineSlug;
+            let displayName = (wineData && (wineData.name || wineData.title)) || '';
+
+            if (!targetSlug || targetSlug === 'main-home' || targetSlug === 'all') {
+                if (window.currentDetailWineSlug) {
+                    targetSlug = window.currentDetailWineSlug;
+                }
+            }
+
+            const detailTitle = document.getElementById('detail-wine-title')?.textContent?.trim();
+            if (detailTitle && (!displayName || displayName === 'Персональный ИИ-Сомелье' || displayName === 'Personal AI Sommelier')) {
+                displayName = detailTitle;
+            }
+
+            if (!targetSlug || targetSlug === 'main-home' || targetSlug === 'all') {
+                targetSlug = 'loco-cimbali-blanc-de-neige-shardone-beloe-suhoe-131';
+                displayName = displayName || 'Loco Cimbali Blanc de Neige';
+            }
+
+            const tagEl = document.getElementById('somm-world-current-wine-tag');
+            if (tagEl) {
+                tagEl.textContent = displayName || targetSlug;
+                tagEl.title = displayName || targetSlug;
+            }
+
+            // 3. Запрос мировых аналогов к выбранному вину
+            const container = document.getElementById('somm-foreign-analogs-container');
+            if (container) {
+                container.innerHTML = `<div style="text-align: center; color: #868e96; font-size: 12.5px; padding: 14px 0;">${isEn ? 'Finding world twins...' : 'Подбираем мировые аналоги...'}</div>`;
+
+                const reqUrl = window.resolveSommApiUrl(`/api/sommelier/world-analogs/for-wine/${encodeURIComponent(targetSlug)}${isEn ? '?lang=en' : ''}`);
+                fetch(reqUrl)
+                    .then(r => {
+                        if (!r.ok) throw new Error('Status ' + r.status);
+                        return r.json();
+                    })
+                    .then(data => {
+                        if (!data.analogs || data.analogs.length === 0) {
+                            container.innerHTML = `<div style="text-align: center; color: #868e96; font-size: 12.5px; padding: 10px 0;">${isEn ? 'No direct foreign analogs found.' : 'Аналоги не найдены.'}</div>`;
+                            return;
+                        }
+                        let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
+                        data.analogs.slice(0, 3).forEach(a => {
+                            const score = a.similarity || 90;
+                            html += `
+                                <div style="background: #fafafa; border: 1px solid #f1f3f5; border-radius: 12px; padding: 12px 14px; transition: box-shadow 0.2s;">
+                                    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 4px;">
+                                        <div style="font-weight: 700; font-size: 14px; color: #1a1a1a;">
+                                            <span style="font-size: 16px; margin-right: 4px;">${a.flag || '🍷'}</span> ${escapeSommHtml(a.name)}
+                                        </div>
+                                        <span style="background: #e8f5e9; color: #2e7d32; font-weight: 700; font-size: 11px; padding: 2px 8px; border-radius: 10px; white-space: nowrap;">${score}% ${isEn ? 'match' : 'сходство'}</span>
                                     </div>
-                                    <span style="background: #e8f5e9; color: #2e7d32; font-weight: 700; font-size: 11px; padding: 2px 8px; border-radius: 10px; white-space: nowrap;">${score}% ${isEn ? 'match' : 'сходство'}</span>
+                                    <div style="font-size: 11.5px; color: #6c757d; margin-bottom: 6px;">
+                                        ${escapeSommHtml(a.appellation || '')} &bull; <strong style="color: #495057;">${escapeSommHtml(a.grape || '')}</strong>
+                                    </div>
+                                    <div style="font-size: 12px; color: #343a40; line-height: 1.4; background: #ffffff; border: 1px solid #e9ecef; border-radius: 8px; padding: 8px 10px;">
+                                        ${escapeSommHtml(a.explanation || a.rationale || '')}
+                                    </div>
                                 </div>
-                                <div style="font-size: 11.5px; color: #6c757d; margin-bottom: 6px;">
-                                    ${escapeSommHtml(a.appellation || '')} &bull; <strong style="color: #495057;">${escapeSommHtml(a.grape || '')}</strong>
-                                </div>
-                                <div style="font-size: 12px; color: #343a40; line-height: 1.4; background: #ffffff; border: 1px solid #e9ecef; border-radius: 8px; padding: 8px 10px;">
-                                    ${escapeSommHtml(a.explanation || a.rationale || '')}
-                                </div>
-                            </div>
-                        `;
+                            `;
+                        });
+                        html += '</div>';
+                        container.innerHTML = html;
+                    })
+                    .catch(err => {
+                        console.warn('[WorldAnalogs] Error loading for wine:', err);
+                        container.innerHTML = `<div style="text-align: center; color: #868e96; font-size: 12px; padding: 10px 0;">${isEn ? 'Select a specific wine in catalog to view its world benchmarks.' : 'Выберите вино в каталоге, чтобы увидеть его мировые аналоги.'}</div>`;
                     });
-                    html += '</div>';
-                    container.innerHTML = html;
-                })
-                .catch(err => {
-                    console.warn('[WorldAnalogs] Error loading for wine:', err);
-                    container.innerHTML = `<div style="text-align: center; color: #868e96; font-size: 12px; padding: 10px 0;">${isEn ? 'Select a specific wine in catalog to view its world benchmarks.' : 'Выберите вино в каталоге, чтобы увидеть его мировые аналоги.'}</div>`;
-                });
+            }
+        } catch(globalErr) {
+            console.error('[WorldAnalogs] Error in loadWorldAnalogsView:', globalErr);
+            const c = document.getElementById('somm-foreign-analogs-container');
+            if (c) c.innerHTML = '<div style="text-align: center; color: #868e96; font-size: 12px; padding: 10px 0;">Не удалось загрузить аналоги.</div>';
         }
     };
 
@@ -3072,78 +3102,84 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.searchRussianAnalogsForForeign = function() {
-        const isEn = window.getAppLang && window.getAppLang() === 'en';
-        const inp = document.getElementById('somm-foreign-search-input');
-        const query = (inp ? inp.value : '').trim();
-        if (!query) return;
+        try {
+            const isEn = window.getAppLang && window.getAppLang() === 'en';
+            const inp = document.getElementById('somm-foreign-search-input');
+            const query = (inp ? inp.value : '').trim();
+            if (!query) return;
 
-        const resultsContainer = document.getElementById('somm-russian-analogs-results-container');
-        if (!resultsContainer) return;
+            const resultsContainer = document.getElementById('somm-russian-analogs-results-container');
+            if (!resultsContainer) return;
 
-        resultsContainer.innerHTML = `<div style="text-align: center; color: #868e96; font-size: 12.5px; padding: 16px 0;">${isEn ? 'Searching up to 3 best Russian twins...' : 'Подбираем до 3-х лучших российских вин из каталога...'}</div>`;
+            resultsContainer.innerHTML = `<div style="text-align: center; color: #868e96; font-size: 12.5px; padding: 16px 0;">${isEn ? 'Searching up to 3 best Russian twins...' : 'Подбираем до 3-х лучших российских вин из каталога...'}</div>`;
 
-        const reqUrl = apiUrl('/api/sommelier/world-analogs/search-foreign');
-        fetch(reqUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: query, lang: isEn ? 'en' : 'ru', top_k: 3 })
-        })
-        .then(r => {
-            if (!r.ok) throw new Error('Status ' + r.status);
-            return r.json();
-        })
-        .then(data => {
-            const twins = data.russian_analogs || [];
-            if (twins.length === 0) {
-                resultsContainer.innerHTML = `<div style="text-align: center; color: #868e96; font-size: 12.5px; padding: 12px 0;">${isEn ? 'No Russian twins found for this query.' : 'Российских аналогов не найдено.'}</div>`;
-                return;
-            }
+            const reqUrl = window.resolveSommApiUrl('/api/sommelier/world-analogs/search-foreign');
+            fetch(reqUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: query, lang: isEn ? 'en' : 'ru', top_k: 3 })
+            })
+            .then(r => {
+                if (!r.ok) throw new Error('Status ' + r.status);
+                return r.json();
+            })
+            .then(data => {
+                const twins = data.russian_analogs || [];
+                if (twins.length === 0) {
+                    resultsContainer.innerHTML = `<div style="text-align: center; color: #868e96; font-size: 12.5px; padding: 12px 0;">${isEn ? 'No Russian twins found for this query.' : 'Российских аналогов не найдено.'}</div>`;
+                    return;
+                }
 
-            let html = '';
-            if (data.foreign) {
-                html += `
-                    <div style="background: #f8f9fa; border-left: 3px solid #722F37; padding: 8px 12px; border-radius: 4px 8px 8px 4px; margin-bottom: 12px; font-size: 12px; color: #495057;">
-                        <span style="font-size: 15px; margin-right: 4px;">${data.foreign.flag || '🍷'}</span>
-                        <strong>${isEn ? 'Recognized Benchmark' : 'Распознанный эталон'}:</strong> ${escapeSommHtml(data.foreign.name)} (${escapeSommHtml(data.foreign.appellation || '')})
-                    </div>
-                `;
-            }
-
-            html += '<div style="display: flex; flex-direction: column; gap: 10px;">';
-            twins.slice(0, 3).forEach(w => {
-                const img = w.image_url ? apiUrl(w.image_url) : apiUrl('/api/image/' + encodeURIComponent(w.slug || w.id));
-                const score = Math.round(w.score || 90);
-                const role = w.role || (isEn ? 'Russian Twin' : 'Российский аналог');
-                const reason = w.explanation || '';
-                const btnText = isEn ? 'View Wine &rarr;' : 'Перейти к вину &rarr;';
-
-                html += `
-                    <div class="somm-wine-card-item">
-                        <img src="${img}" style="width: 44px; height: 68px; object-fit: contain;" onerror="this.src='img/glass_filled_straight.png'">
-                        <div style="flex: 1; min-width: 0;">
-                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-                                <div style="font-weight: 700; font-size: 14px; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeSommHtml(w.name)}</div>
-                                <span style="background: #e8f5e9; color: #2e7d32; font-weight: 700; font-size: 11px; padding: 2px 8px; border-radius: 10px; white-space: nowrap;">${score}%</span>
-                            </div>
-                            <div style="font-size: 11.5px; color: #6c757d; margin: 2px 0 4px 0;">
-                                ${escapeSommHtml(w.winery || '')} &bull; ${escapeSommHtml(w.region || '')} &bull; ${escapeSommHtml(w.grape || '')}
-                            </div>
-                            <div style="display: inline-block; background: #fdf2f4; color: #722F37; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 8px; margin-bottom: 4px;">
-                                ${escapeSommHtml(role)}
-                            </div>
-                            ${reason ? `<div style="font-size: 11.5px; color: #495057; line-height: 1.35; margin-bottom: 6px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;">${escapeSommHtml(reason)}</div>` : ''}
-                            <button type="button" onclick="openWineDetail('${w.slug || w.id}'); closeSommelierStubModal();" style="background: #722F37; color: #ffffff; border: none; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;">
-                                ${btnText}
-                            </button>
+                let html = '';
+                if (data.foreign) {
+                    html += `
+                        <div style="background: #f8f9fa; border-left: 3px solid #722F37; padding: 8px 12px; border-radius: 4px 8px 8px 4px; margin-bottom: 12px; font-size: 12px; color: #495057;">
+                            <span style="font-size: 15px; margin-right: 4px;">${data.foreign.flag || '🍷'}</span>
+                            <strong>${isEn ? 'Recognized Benchmark' : 'Распознанный эталон'}:</strong> ${escapeSommHtml(data.foreign.name)} (${escapeSommHtml(data.foreign.appellation || '')})
                         </div>
-                    </div>
-                `;
+                    `;
+                }
+
+                html += '<div style="display: flex; flex-direction: column; gap: 10px;">';
+                twins.slice(0, 3).forEach(w => {
+                    const img = w.image_url ? window.resolveSommApiUrl(w.image_url) : window.resolveSommApiUrl('/api/image/' + encodeURIComponent(w.slug || w.id));
+                    const score = Math.round(w.score || 90);
+                    const role = w.role || (isEn ? 'Russian Twin' : 'Российский аналог');
+                    const reason = w.explanation || '';
+                    const btnText = isEn ? 'View Wine &rarr;' : 'Перейти к вину &rarr;';
+
+                    html += `
+                        <div class="somm-wine-card-item">
+                            <img src="${img}" style="width: 44px; height: 68px; object-fit: contain;" onerror="this.src='img/glass_filled_straight.png'">
+                            <div style="flex: 1; min-width: 0;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                                    <div style="font-weight: 700; font-size: 14px; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeSommHtml(w.name)}</div>
+                                    <span style="background: #e8f5e9; color: #2e7d32; font-weight: 700; font-size: 11px; padding: 2px 8px; border-radius: 10px; white-space: nowrap;">${score}%</span>
+                                </div>
+                                <div style="font-size: 11.5px; color: #6c757d; margin: 2px 0 4px 0;">
+                                    ${escapeSommHtml(w.winery || '')} &bull; ${escapeSommHtml(w.region || '')} &bull; ${escapeSommHtml(w.grape || '')}
+                                </div>
+                                <div style="display: inline-block; background: #fdf2f4; color: #722F37; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 8px; margin-bottom: 4px;">
+                                    ${escapeSommHtml(role)}
+                                </div>
+                                ${reason ? `<div style="font-size: 11.5px; color: #495057; line-height: 1.35; margin-bottom: 6px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;">${escapeSommHtml(reason)}</div>` : ''}
+                                <button type="button" onclick="openWineDetail('${w.slug || w.id}'); closeSommelierStubModal();" style="background: #722F37; color: #ffffff; border: none; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;">
+                                    ${btnText}
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                resultsContainer.innerHTML = html;
+            })
+            .catch(err => {
+                console.error('[WorldAnalogs] Search error:', err);
+                resultsContainer.innerHTML = `<div style="text-align: center; color: #c92a2a; font-size: 12px; padding: 12px 0;">${isEn ? 'Error performing search.' : 'Ошибка поиска аналогов.'}</div>`;
             });
-            html += '</div>';
-            resultsContainer.innerHTML = html;
-        })
-        .catch(err => {
-            console.error('[WorldAnalogs] Search error:', err);
-            resultsContainer.innerHTML = `<div style="text-align: center; color: #c92a2a; font-size: 12px; padding: 12px 0;">${isEn ? 'Error performing search.' : 'Ошибка поиска аналогов.'}</div>`;
-        });
+        } catch(globalErr) {
+            console.error('[WorldAnalogs] Search error caught:', globalErr);
+            const rc = document.getElementById('somm-russian-analogs-results-container');
+            if (rc) rc.innerHTML = '<div style="text-align: center; color: #c92a2a; font-size: 12px; padding: 12px 0;">Ошибка поиска аналогов.</div>';
+        }
     };

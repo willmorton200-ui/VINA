@@ -719,6 +719,78 @@ WORLD_BENCHMARKS = [
 
     # ========================== ИГРИСТЫЕ ВИНА ==========================
     {
+        "id": "champagne-rose",
+        "name_ru": "Розовое Шампанское (Брют)",
+        "name_en": "French Champagne Rosé Brut AOC",
+        "appellation_ru": "Франция, Шампань",
+        "appellation_en": "France, Champagne",
+        "flag": "🇫🇷",
+        "country_ru": "Франция",
+        "country_en": "France",
+        "grape_ru": "Пино Нуар, Шардоне, Пино Менье",
+        "grape_en": "Pinot Noir, Chardonnay, Meunier",
+        "grapes_keys": ["пино нуар", "pinot noir", "шампанское", "розе", "розовое", "брют", "champagne", "rose"],
+        "color": "розовое",
+        "sparkling": True,
+        "fortified": False,
+        "sweetness": 0,
+        "oak": False,
+        "body": 3.2,
+        "acidity": 4.8,
+        "tannins": 0.3,
+        "tags": ["розовое шампанское", "champagne rose", "розе брют", "брют розе", "шампань розе"],
+        "rationale_ru": "Классический метод шампанизации: тончайший перляж, лесная земляника, малина, красная смородина и тостовая бриошь.",
+        "rationale_en": "Méthode Traditionnelle: fine persistent bead, wild woodland strawberry, raspberry, redcurrant, and warm brioche."
+    },
+    {
+        "id": "prosecco-rose",
+        "name_ru": "Итальянское Просекко Розе",
+        "name_en": "Italian Prosecco Rosé DOC Millesimato",
+        "appellation_ru": "Италия, Венето",
+        "appellation_en": "Italy, Veneto",
+        "flag": "🇮🇹",
+        "country_ru": "Италия",
+        "country_en": "Italy",
+        "grape_ru": "Глера, Пино Неро",
+        "grape_en": "Glera, Pinot Nero",
+        "grapes_keys": ["просекко", "prosecco", "пино неро", "глера", "розе", "rose"],
+        "color": "розовое",
+        "sparkling": True,
+        "fortified": False,
+        "sweetness": 0,
+        "oak": False,
+        "body": 2.4,
+        "acidity": 4.2,
+        "tannins": 0.1,
+        "tags": ["просекко розе", "prosecco rose", "итальянское игристое розе"],
+        "rationale_ru": "Игристый метод Шарма: сочные красные ягоды, розовый грейпфрут, цветущая сакура и радостный освежающий перляж.",
+        "rationale_en": "Vibrant Charmat method: juicy red berries, pink grapefruit zest, cherry blossom, and crisp refreshing effervescence."
+    },
+    {
+        "id": "cava-rose",
+        "name_ru": "Испанская Кава Розе Резерва",
+        "name_en": "Spanish Cava Rosé Brut Reserva DO",
+        "appellation_ru": "Испания, Каталония (Пенедес)",
+        "appellation_en": "Spain, Catalonia (Penedès)",
+        "flag": "🇪🇸",
+        "country_ru": "Испания",
+        "country_en": "Spain",
+        "grape_ru": "Гарнача, Трепат, Монастрель",
+        "grape_en": "Garnacha, Trepat, Monastrell",
+        "grapes_keys": ["cava", "кава", "трепат", "гарнача", "розе", "rose"],
+        "color": "розовое",
+        "sparkling": True,
+        "fortified": False,
+        "sweetness": 0,
+        "oak": False,
+        "body": 2.9,
+        "acidity": 4.5,
+        "tannins": 0.2,
+        "tags": ["кава розе", "cava rose", "испанское розе игристое"],
+        "rationale_ru": "Средиземноморский традиционный метод: спелый гранат, красная смородина, средиземноморские травы и минеральный сухой финиш.",
+        "rationale_en": "Traditional bottle-fermented Mediterranean sparkling: ripe pomegranate, redcurrant, garrigue herbs, and dry mineral finish."
+    },
+    {
         "id": "champagne-brut",
         "name_ru": "Французское Шампанское (Брют)",
         "name_en": "French Champagne Brut AOC",
@@ -919,21 +991,29 @@ def find_foreign_analogs_for_russian_wine(wine: dict, top_k: int = 3, lang: str 
 
     scored_benchmarks = []
     for bm in WORLD_BENCHMARKS:
-        # 1. Жесткие фильтры типа (игристое, крепленое, цвет)
+        # 1. Жесткие фильтры типа (игристое, крепленое)
         if bm["sparkling"] != is_sparkling:
             continue
         if bm["fortified"] != is_fortified:
             continue
 
         bm_color = bm["color"]
-        if is_white and "бел" not in bm_color:
-            continue
-        if is_red and "красн" not in bm_color:
-            continue
-        if is_rose and "розов" not in bm_color:
-            continue
+        if not is_sparkling:
+            if is_white and "бел" not in bm_color:
+                continue
+            if is_red and "красн" not in bm_color:
+                continue
+            if is_rose and "розов" not in bm_color:
+                continue
 
         score = 0.50
+
+        # Сходство цвета для игристых
+        if is_sparkling:
+            if (is_rose and "розов" in bm_color) or (is_white and "бел" in bm_color):
+                score += 0.25
+            elif is_rose and "бел" in bm_color:
+                score += 0.05
 
         # Сортовое родство
         matched_grape = any(k in w_grape or k in w_all for k in bm["grapes_keys"])
@@ -978,6 +1058,26 @@ def find_foreign_analogs_for_russian_wine(wine: dict, top_k: int = 3, lang: str 
         })
 
     scored_benchmarks.sort(key=lambda x: x["similarity"], reverse=True)
+    if not scored_benchmarks:
+        # Fallback на проверенные мировые эталоны в зависимости от стиля
+        pool = [b for b in WORLD_BENCHMARKS if b["sparkling"] == is_sparkling] or WORLD_BENCHMARKS
+        for bm in pool[:top_k]:
+            explanation = bm["rationale_en"] if is_en else bm["rationale_ru"]
+            scored_benchmarks.append({
+                "id": bm["id"],
+                "name": bm["name_en"] if is_en else bm["name_ru"],
+                "appellation": bm["appellation_en"] if is_en else bm["appellation_ru"],
+                "flag": bm["flag"],
+                "country": bm["country_en"] if is_en else bm["country_ru"],
+                "grape": bm["grape_en"] if is_en else bm["grape_ru"],
+                "similarity": 88,
+                "explanation": explanation,
+                "rationale": explanation,
+                "style_badge": "Мировой аналог" if not is_en else "World Benchmark Twin",
+                "body": bm["body"],
+                "acidity": bm["acidity"],
+                "tannins": bm["tannins"]
+            })
     return scored_benchmarks[:top_k]
 
 
