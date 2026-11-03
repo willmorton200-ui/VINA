@@ -6,11 +6,87 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Свое вино | Сканер, Каталог, Карта и Сомелье</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="scanner.css?v=47_wineset">
+    <link rel="stylesheet" href="scanner.css?v=49_i18n">
+    <style>
+        .vina-lang-switcher {
+            display: inline-flex;
+            align-items: center;
+            background: #f1f3f5;
+            border: 1px solid #e2e5e9;
+            border-radius: 20px;
+            padding: 2px;
+            gap: 2px;
+            user-select: none;
+            flex-shrink: 0;
+        }
+        .vina-lang-btn {
+            border: none;
+            background: transparent;
+            color: #555555;
+            font-size: 11.5px;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 16px;
+            cursor: pointer;
+            line-height: 1.1;
+            transition: all 0.18s ease;
+            font-family: inherit;
+        }
+        .vina-lang-btn.active {
+            background: #722F37;
+            color: #ffffff;
+            box-shadow: 0 2px 6px rgba(114, 47, 55, 0.28);
+        }
+        .vina-lang-switcher--splash {
+            position: absolute;
+            top: 18px;
+            right: 20px;
+            z-index: 25;
+            background: rgba(20, 20, 22, 0.68);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            padding: 3px;
+        }
+        .vina-lang-switcher--splash .vina-lang-btn {
+            color: rgba(255, 255, 255, 0.88);
+            font-size: 13px;
+            padding: 5px 12px;
+        }
+        .vina-lang-switcher--splash .vina-lang-btn.active {
+            background: #ffffff;
+            color: #722F37;
+            font-weight: 700;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+        }
+        .vina-lang-switcher--hero {
+            display: inline-flex;
+            margin-bottom: 14px;
+            background: rgba(20, 20, 22, 0.68);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            padding: 3px;
+            border-radius: 22px;
+        }
+        .vina-lang-switcher--hero .vina-lang-btn {
+            color: rgba(255, 255, 255, 0.88);
+            font-size: 13.5px;
+            padding: 6px 14px;
+            border-radius: 18px;
+        }
+        .vina-lang-switcher--hero .vina-lang-btn.active {
+            background: #ffffff;
+            color: #722F37;
+            font-weight: 700;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+        }
+    </style>
 
     <!-- Leaflet OpenStreetMap для закладки "Карта вин" -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="i18n.js?v=49_i18n"></script>
     <script>
         // =========================================================================
         // ЛОГИКА ФУНКЦИИ «СОБРАТЬ СЕТ» И НАВИГАЦИИ КАРТОЧКИ ВИНА
@@ -265,12 +341,20 @@
         <!-- Заставка 1 / 4: Подтверждение возраста +18 -->
         <div id="splash-step-1" class="age-gate-step age-gate-step-1 active-step">
             <div class="splash-step-counter">1 / 4</div>
+            <div class="vina-lang-switcher vina-lang-switcher--splash" role="group" aria-label="Выбор языка / Language">
+                <button type="button" class="vina-lang-btn active" data-lang="ru" onclick="window.setAppLang('ru')">Рус</button>
+                <button type="button" class="vina-lang-btn" data-lang="en" onclick="window.setAppLang('en')">Eng</button>
+            </div>
             <div class="age-gate-top-brand">
                 <img src="znak.png" alt="Свое вино" class="age-gate-brand-znak">
                 <span class="age-gate-brand-name">Свое вино</span>
             </div>
 
             <div class="age-gate-bottom-content">
+                <div class="vina-lang-switcher vina-lang-switcher--hero" role="group" aria-label="Выбор языка / Language">
+                    <button type="button" class="vina-lang-btn active" data-lang="ru" onclick="window.setAppLang('ru')">Рус</button>
+                    <button type="button" class="vina-lang-btn" data-lang="en" onclick="window.setAppLang('en')">Eng</button>
+                </div>
                 <h1 class="age-gate-title">Добро пожаловать<br>в Свое вино</h1>
                 <p class="age-gate-subtitle">Пожалуйста, подтвердите ваш возраст</p>
                 <button type="button" class="age-gate-btn" id="btn-age-confirm" onclick="goToSplashStep2()">Мне есть 18</button>
@@ -280,6 +364,10 @@
         <!-- Заставка 2 / 4: Разрешения и уведомления -->
         <div id="splash-step-2" class="age-gate-step age-gate-step-2">
             <div class="splash-step-counter">2 / 4</div>
+            <div class="vina-lang-switcher vina-lang-switcher--splash" role="group" aria-label="Выбор языка / Language">
+                <button type="button" class="vina-lang-btn active" data-lang="ru" onclick="window.setAppLang('ru')">Рус</button>
+                <button type="button" class="vina-lang-btn" data-lang="en" onclick="window.setAppLang('en')">Eng</button>
+            </div>
             <div></div>
 
             <div id="splash-step-2-content" class="age-gate-bottom-content">
@@ -306,6 +394,10 @@
         <!-- Заставка 3 / 4: Доступ к геопозиции ("Вино рядом") -->
         <div id="splash-step-3" class="age-gate-step age-gate-step-3">
             <div class="splash-step-counter">3 / 4</div>
+            <div class="vina-lang-switcher vina-lang-switcher--splash" role="group" aria-label="Выбор языка / Language">
+                <button type="button" class="vina-lang-btn active" data-lang="ru" onclick="window.setAppLang('ru')">Рус</button>
+                <button type="button" class="vina-lang-btn" data-lang="en" onclick="window.setAppLang('en')">Eng</button>
+            </div>
             <div></div>
 
             <div id="splash-step-3-content" class="age-gate-bottom-content">
@@ -388,6 +480,10 @@
         <!-- Заставка 4 / 4: 101 бонус за авторизацию -->
         <div id="splash-step-4" class="age-gate-step age-gate-step-4">
             <div class="splash-step-counter">4 / 4</div>
+            <div class="vina-lang-switcher vina-lang-switcher--splash" style="right: auto; left: 72px;" role="group" aria-label="Выбор языка / Language">
+                <button type="button" class="vina-lang-btn active" data-lang="ru" onclick="window.setAppLang('ru')">Рус</button>
+                <button type="button" class="vina-lang-btn" data-lang="en" onclick="window.setAppLang('en')">Eng</button>
+            </div>
             <button type="button" class="splash-skip-btn" onclick="finishOnboarding()">Пропустить</button>
             <div></div>
 
@@ -579,8 +675,17 @@
             var _hUrl = '/api/health';
             try {
                 var _p = new URLSearchParams(window.location.search).get('api');
+                if (!_p && window.location.search) {
+                    var _m = window.location.search.match(/[?&]api\/?\/?([^&]+)/);
+                    if (_m && _m[1]) _p = decodeURIComponent(_m[1]);
+                }
                 var _b = _p ? _p.trim().replace(/\/+$/, '') : (localStorage.getItem('vina_api_url') || '');
-                if (_b) _hUrl = _b + '/api/health';
+                if (_b) {
+                    if (!/^https?:\/\//i.test(_b)) {
+                        _b = (_b.startsWith('//') ? window.location.protocol : 'https://') + _b.replace(/^\/+/, '');
+                    }
+                    _hUrl = _b.replace(/\/+$/, '') + '/api/health';
+                }
             } catch(e) {}
             fetch(_hUrl).then(function(r) { return r.json(); }).then(function(data) {
                 if (previewStep) return;
@@ -859,7 +964,11 @@
                 </button>
             </div>
 
-            <div class="header-right-slot">
+            <div class="header-right-slot" style="display: flex; align-items: center; gap: 8px;">
+                <div class="vina-lang-switcher" role="group" aria-label="Выбор языка / Language">
+                    <button type="button" class="vina-lang-btn active" data-lang="ru" onclick="window.setAppLang('ru')">Рус</button>
+                    <button type="button" class="vina-lang-btn" data-lang="en" onclick="window.setAppLang('en')">Eng</button>
+                </div>
                 <button type="button" class="header-map-circle-btn" id="btn-header-map" onclick="switchHubTab('map')" title="Карта магазинов рядом">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M12 21s-7-5.686-7-11a7 7 0 1 1 14 0c0 5.314-7 11-7 11z"/>
@@ -2090,7 +2199,7 @@
     </div>
 
     <!-- Основной скрипт сканера -->
-    <script src="scanner.js?v=39_mapfix"></script>
+    <script src="scanner.js?v=49_i18n"></script>
 
     <!-- Скрипт логики Главной страницы, Каталога, Карты, Избранного и Тостов -->
     <script>
@@ -2116,19 +2225,37 @@
         function getHubApiBase() {
             try {
                 const urlParams = new URLSearchParams(window.location.search);
-                const apiParam = urlParams.get('api');
+                let apiParam = urlParams.get('api');
+                if (!apiParam && window.location.search) {
+                    const m = window.location.search.match(/[?&]api\/?\/?([^&]+)/);
+                    if (m && m[1]) apiParam = decodeURIComponent(m[1]);
+                }
                 if (apiParam) {
-                    const clean = apiParam.trim().replace(/\/+$/, '');
+                    let clean = apiParam.trim().replace(/\/+$/, '');
+                    if (!/^https?:\/\//i.test(clean)) {
+                        clean = (clean.startsWith('//') ? window.location.protocol : 'https://') + clean.replace(/^\/+/, '');
+                    }
+                    clean = clean.replace(/\/+$/, '');
                     localStorage.setItem('vina_api_url', clean);
                     return clean;
                 }
             } catch(e) {}
             const inp = document.getElementById('input-api-url');
             if (inp && inp.value && inp.value.trim()) {
-                return inp.value.trim().replace(/\/+$/, '');
+                let v = inp.value.trim().replace(/\/+$/, '');
+                if (!/^https?:\/\//i.test(v)) {
+                    v = (v.startsWith('//') ? window.location.protocol : 'https://') + v.replace(/^\/+/, '');
+                }
+                return v.replace(/\/+$/, '');
             }
             const saved = localStorage.getItem('vina_api_url') || '';
-            if (saved) return saved.replace(/\/+$/, '');
+            if (saved) {
+                let s = saved.trim().replace(/\/+$/, '');
+                if (!/^https?:\/\//i.test(s)) {
+                    s = (s.startsWith('//') ? window.location.protocol : 'https://') + s.replace(/^\/+/, '');
+                }
+                return s.replace(/\/+$/, '');
+            }
             if (window.location.protocol === 'file:') return 'http://127.0.0.1:8080';
             return '';
         }
@@ -2368,6 +2495,7 @@
         window.updateDetailFavState = updateDetailFavState;
 
         function renderHomeWineCard(w) {
+            if (window.trWineCardItem) w = window.trWineCardItem(w);
             const favs = getFavoriteSlugsSet();
             const isFav = favs.has(w.slug);
             const localImg = `../wines_images_clean/wines_images/${w.slug}.webp`;
@@ -2407,6 +2535,7 @@
             if (row2) row2.innerHTML = HOME_POPULAR_ROW_2.map(renderHomeWineCard).join('');
             updateFavBadge();
         }
+        window.initHomePopularRows = initHomePopularRows;
 
         // =========================================================
         // ЛОГИКА ИЗБРАННОГО: ВЫДЕЛЕНИЕ, КАЛЬКУЛЯТОР НА КОМПАНИЮ,
@@ -2653,10 +2782,13 @@
             localStorage.setItem('vina_wine_sets', JSON.stringify(savedSets));
             saveFavQuantities(qMap);
 
-            window.favLastCalculationNotice = `На компанию из <strong>${guests} чел.</strong> по мировому стандарту рассчитано <strong>${actualTotal} шт.</strong> вина (~3 бокала на гостя).`;
+            const isEn = window.getAppLang && window.getAppLang() === 'en';
+            window.favLastCalculationNotice = isEn
+                ? `For a party of <strong>${guests} guests</strong>, <strong>${actualTotal} bottles</strong> are recommended by the international standard (~3 glasses per guest).`
+                : `На компанию из <strong>${guests} чел.</strong> по мировому стандарту рассчитано <strong>${actualTotal} шт.</strong> вина (~3 бокала на гостя).`;
 
             if (typeof showToast === 'function') {
-                showToast(`Рассчитано ${actualTotal} шт. на ${guests} чел.!`);
+                showToast(isEn ? `Calculated ${actualTotal} bottles for ${guests} guests!` : `Рассчитано ${actualTotal} шт. на ${guests} чел.!`);
             }
 
             renderFavoritesPanel();
@@ -2664,6 +2796,7 @@
         window.applyPartyCalculation = applyPartyCalculation;
 
         function renderFavWineCard(w, options) {
+            if (window.trWineCardItem) w = window.trWineCardItem(w);
             const { itemKey, isSelected, qty, isSetItem } = options;
             const favs = getFavoriteSlugsSet();
             const isFav = favs.has(w.slug);
@@ -2938,7 +3071,20 @@
             // 4. Рендер итоговой плашки сводки
             if (summaryContainer) {
                 const guestsCovered = Math.round(totalBottlesSum * 2);
-                summaryContainer.innerHTML = `
+                const isEn = window.getAppLang && window.getAppLang() === 'en';
+                summaryContainer.innerHTML = isEn ? `
+                    <div class="fav-bottom-summary-card">
+                        <div class="fav-summary-left">
+                            <div class="fav-summary-label">Total to buy:</div>
+                            <div class="fav-summary-value"><strong>${totalBottlesSum} pcs</strong> of wine <span style="font-size: 13px; font-weight: 500; color: #6c757d;">(${totalDistinctWines} varieties)</span></div>
+                            <div class="fav-summary-guests">Enough for ~${guestsCovered} guests (~3 glasses per guest)</div>
+                        </div>
+                        <button type="button" class="btn-fav-shopping-list" onclick="openFavShoppingListModal()">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+                            <span>Shopping List</span>
+                        </button>
+                    </div>
+                ` : `
                     <div class="fav-bottom-summary-card">
                         <div class="fav-summary-left">
                             <div class="fav-summary-label">Итого к покупке:</div>
@@ -2952,7 +3098,9 @@
                     </div>
                 `;
             }
+            if (window.applyI18nToDOM) window.applyI18nToDOM( document.getElementById('hub-panel-favorites') );
         }
+        window.renderFavoritesPanel = renderFavoritesPanel;
 
         function deleteFavoriteWineSet(setId) {
             let savedSets = [];
@@ -2972,6 +3120,7 @@
             const body = document.getElementById('fav-shopping-list-body');
             if (!modal || !body) return;
 
+            const isEn = window.getAppLang && window.getAppLang() === 'en';
             let savedSets = [];
             try { savedSets = JSON.parse(localStorage.getItem('vina_wine_sets') || '[]'); } catch(e) {}
             const favs = getFavoriteSlugsSet();
@@ -2982,18 +3131,21 @@
 
             let totalQty = 0;
             let listHtml = '';
-            let plainText = 'СПИСОК ВИН К ПОКУПКЕ\n=======================\n\n';
+            let plainText = isEn ? 'WINE SHOPPING LIST\n=======================\n\n' : 'СПИСОК ВИН К ПОКУПКЕ\n=======================\n\n';
+            const pcsWord = isEn ? 'pcs' : 'шт.';
+            const defMeta = isEn ? '0.75 L' : '0.75 л';
 
             if (savedSets.length > 0) {
                 savedSets.forEach((set, idx) => {
-                    const setName = set.name || `Сет №${idx + 1}`;
+                    const setName = set.name ? (isEn ? set.name.replace(/Сет №(\d+)/, 'Set #$1') : set.name) : (isEn ? `Set #${idx + 1}` : `Сет №${idx + 1}`);
                     listHtml += `<div style="font-weight: 700; color: #722F37; margin-bottom: 6px; font-size: 15px;">${setName}:</div><ul style="margin: 0 0 14px 0; padding-left: 20px;">`;
                     plainText += `${setName}:\n`;
-                    (set.items || []).forEach(item => {
+                    (set.items || []).forEach(rawItem => {
+                        const item = window.trWineCardItem ? window.trWineCardItem(rawItem) : rawItem;
                         const qty = item.qty || 1;
                         totalQty += qty;
-                        listHtml += `<li style="margin-bottom: 4px;"><strong>${qty} шт.</strong> — ${item.title} <span style="color: #6c757d; font-size: 12px;">(${item.meta || '0.75 л'})</span></li>`;
-                        plainText += ` • ${qty} шт. — ${item.title} (${item.meta || '0.75 л'})\n`;
+                        listHtml += `<li style="margin-bottom: 4px;"><strong>${qty} ${pcsWord}</strong> — ${item.title} <span style="color: #6c757d; font-size: 12px;">(${item.meta || defMeta})</span></li>`;
+                        plainText += ` • ${qty} ${pcsWord} — ${item.title} (${item.meta || defMeta})\n`;
                     });
                     listHtml += `</ul>`;
                     plainText += '\n';
@@ -3001,27 +3153,36 @@
             }
 
             if (favs.size > 0) {
-                listHtml += `<div style="font-weight: 700; color: #722F37; margin-bottom: 6px; font-size: 15px;">Остальные вина:</div><ul style="margin: 0 0 14px 0; padding-left: 20px;">`;
-                plainText += `Остальные вина:\n`;
+                const otherTitle = isEn ? 'Other Wines:' : 'Остальные вина:';
+                listHtml += `<div style="font-weight: 700; color: #722F37; margin-bottom: 6px; font-size: 15px;">${otherTitle}</div><ul style="margin: 0 0 14px 0; padding-left: 20px;">`;
+                plainText += `${otherTitle}\n`;
                 favs.forEach(slug => {
-                    const item = wineMap.get(slug) || { title: slug, meta: 'Россия, 0.75 л' };
+                    const rawItem = wineMap.get(slug) || { title: slug, meta: isEn ? 'Russia, 0.75 L' : 'Россия, 0.75 л' };
+                    const item = window.trWineCardItem ? window.trWineCardItem(rawItem) : rawItem;
                     const qty = qMap[slug] || 1;
                     totalQty += qty;
-                    listHtml += `<li style="margin-bottom: 4px;"><strong>${qty} шт.</strong> — ${item.title} <span style="color: #6c757d; font-size: 12px;">(${item.meta || '0.75 л'})</span></li>`;
-                    plainText += ` • ${qty} шт. — ${item.title} (${item.meta || '0.75 л'})\n`;
+                    listHtml += `<li style="margin-bottom: 4px;"><strong>${qty} ${pcsWord}</strong> — ${item.title} <span style="color: #6c757d; font-size: 12px;">(${item.meta || defMeta})</span></li>`;
+                    plainText += ` • ${qty} ${pcsWord} — ${item.title} (${item.meta || defMeta})\n`;
                 });
                 listHtml += `</ul>`;
                 plainText += '\n';
             }
 
             const guestsEst = Math.round(totalQty * 2);
-            listHtml += `
+            listHtml += isEn ? `
+                <div style="background: #fdf2f4; border: 1px solid #f3d4da; border-radius: 10px; padding: 10px 12px; margin-top: 10px;">
+                    <div style="font-size: 15px; font-weight: 700; color: #1a1a1a;">Total to buy: <span style="color: #722F37;">${totalQty} pcs</span></div>
+                    <div style="font-size: 12px; color: #6c757d; margin-top: 2px;">Enough for a party of ~${guestsEst} guests (international sommelier standard: ~3 glasses per guest).</div>
+                </div>
+            ` : `
                 <div style="background: #fdf2f4; border: 1px solid #f3d4da; border-radius: 10px; padding: 10px 12px; margin-top: 10px;">
                     <div style="font-size: 15px; font-weight: 700; color: #1a1a1a;">Всего к покупке: <span style="color: #722F37;">${totalQty} шт.</span></div>
                     <div style="font-size: 12px; color: #6c757d; margin-top: 2px;">Хватит на компанию из ~${guestsEst} человек (по мировому стандарту сомелье: ~3 бокала на гостя).</div>
                 </div>
             `;
-            plainText += `=======================\nИТОГО: ${totalQty} бутылок\nХватит на ~${guestsEst} гостей (по мировому стандарту).`;
+            plainText += isEn
+                ? `=======================\nTOTAL: ${totalQty} bottles\nEnough for ~${guestsEst} guests (international standard).`
+                : `=======================\nИТОГО: ${totalQty} бутылок\nХватит на ~${guestsEst} гостей (по мировому стандарту).`;
 
             window.currentFavShoppingListText = plainText;
             body.innerHTML = listHtml;
@@ -3225,19 +3386,27 @@
         }
 
         function openToastCategoryPage(catKey, catTitle) {
+            window.currentToastCategoryKey = catKey;
+            window.currentToastCategoryTitle = catTitle;
+            const isEn = window.getAppLang && window.getAppLang() === 'en';
             const titleEl = document.getElementById('toast-page-title');
             const listEl = document.getElementById('toast-page-list');
-            if (titleEl) titleEl.textContent = catTitle;
+            if (titleEl) {
+                titleEl.textContent = (isEn && window.TOAST_TITLES_EN && (window.TOAST_TITLES_EN[catKey] || window.TOAST_TITLES_EN[catTitle]))
+                    ? (window.TOAST_TITLES_EN[catKey] || window.TOAST_TITLES_EN[catTitle])
+                    : catTitle;
+            }
 
-            let list = TOASTS_BY_OCCASION[catKey] || [];
+            const toastSource = (isEn && window.TOASTS_BY_OCCASION_EN_MAP) ? window.TOASTS_BY_OCCASION_EN_MAP : TOASTS_BY_OCCASION;
+            let list = toastSource[catKey] || [];
             if (catKey === 'random') {
                 const allPool = [
-                    ...TOASTS_BY_OCCASION.friends,
-                    ...TOASTS_BY_OCCASION.family,
-                    ...TOASTS_BY_OCCASION.birthday,
-                    ...TOASTS_BY_OCCASION.wedding,
-                    ...TOASTS_BY_OCCASION.romance,
-                    ...TOASTS_BY_OCCASION.short
+                    ...(toastSource.friends || []),
+                    ...(toastSource.family || []),
+                    ...(toastSource.birthday || []),
+                    ...(toastSource.wedding || []),
+                    ...(toastSource.romance || []),
+                    ...(toastSource.short || [])
                 ];
                 const pick1 = allPool[Math.floor(Math.random() * allPool.length)];
                 const pick2 = allPool[(Math.floor(Math.random() * allPool.length) + 3) % allPool.length];
@@ -3256,6 +3425,7 @@
             switchHubTab('toasts');
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
+        window.openToastCategoryPage = openToastCategoryPage;
 
         // ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК И НИЖНЕГО МЕНЮ
         
@@ -3294,11 +3464,13 @@
             }
 
             if (viewedScroll) {
-                if (viewedCountEl) viewedCountEl.textContent = `${viewed.length} вин`;
+                const isEn = window.getAppLang && window.getAppLang() === 'en';
+                if (viewedCountEl) viewedCountEl.textContent = isEn ? `${viewed.length} wines` : `${viewed.length} вин`;
                 viewedScroll.innerHTML = viewed.map(renderHomeWineCard).join('');
                 enableHorizontalScrollControl();
             }
         }
+        window.renderProfileWines = renderProfileWines;
 
         function switchHubTab(tabName) {
             document.querySelectorAll('.hub-tab-btn').forEach(b => b.classList.remove('active'));
@@ -3949,20 +4121,23 @@
                 const totalCount = data.count || items.length;
                 window.CURRENT_CATALOG_ITEMS = (window.CURRENT_CATALOG_ITEMS || []).concat(items);
 
-                stats.textContent = `Показано ${Math.min(catalogPageOffset + items.length, totalCount)} из ${totalCount} вин`;
+                const isEn = window.getAppLang && window.getAppLang() === 'en';
+                stats.textContent = isEn
+                    ? `Showing ${Math.min(catalogPageOffset + items.length, totalCount)} of ${totalCount} wines`
+                    : `Показано ${Math.min(catalogPageOffset + items.length, totalCount)} из ${totalCount} вин`;
 
                 const cardsHtml = items.map(w => {
                     const ratingScore = w.rating ? parseFloat(w.rating).toFixed(2) : '4.85';
                     const photoUrl = `${getHubApiBase()}/api/image/${w.slug}`;
-                    const wineryName = w.winery || (w.name.includes(' ') ? w.name.split(' ')[0] : 'Винодельня России');
-                    const colorTag = w.color || 'Вино';
-                    const sugarTag = w.sugar || w.sweetness || 'Сухое';
-                    const regionTag = w.region || 'Россия';
+                    const wineryName = w.winery || (w.name.includes(' ') ? w.name.split(' ')[0] : (isEn ? 'Russian Winery' : 'Винодельня России'));
+                    const colorTag = w.color || (isEn ? 'Wine' : 'Вино');
+                    const sugarTag = w.sugar || w.sweetness || (isEn ? 'Dry' : 'Сухое');
+                    const regionTag = w.region || (isEn ? 'Russia' : 'Россия');
                     const price = w.price || 990;
 
                     const favs = getFavoriteSlugsSet();
                     const isFav = favs.has(w.slug);
-                    const metaFormatted = [regionTag, colorTag && sugarTag ? `${colorTag}, ${sugarTag.toLowerCase()}` : (colorTag || sugarTag), '0.75 л'].filter(Boolean).join(', ');
+                    const metaFormatted = [regionTag, colorTag && sugarTag ? `${colorTag}, ${sugarTag.toLowerCase()}` : (colorTag || sugarTag), isEn ? '0.75 L' : '0.75 л'].filter(Boolean).join(', ');
 
                     const localImg = `../wines_images_clean/wines_images/${w.slug}.webp`;
                     const finalImg = (window.location.protocol === 'file:') ? localImg : photoUrl;
@@ -4020,6 +4195,8 @@
                 if (!isAppend) grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 30px; color: #c92a2a;">Ошибка загрузки каталога. Проверьте соединение с сервером.</div>';
             }
         }
+        window.fetchCatalogWines = fetchCatalogWines;
+        window.loadCatalogFacetsIntoSidebar = loadCatalogFacetsIntoSidebar;
 
         function loadMoreCatalogWines() {
             catalogPageOffset += catalogPageLimit;
@@ -4101,33 +4278,39 @@
                 console.warn(e);
             }
 
+            const isEn = window.getAppLang && window.getAppLang() === 'en';
             const stores = (data && Array.isArray(data.stores)) ? data.stores : [];
-            const wineTitle = (data && data.selected_wine_name) ? data.selected_wine_name : (currentMapWineSlug ? "Выбранное вино" : "Вина России");
+            const wineTitle = (data && data.selected_wine_name) ? data.selected_wine_name : (currentMapWineSlug ? (isEn ? "Selected Wine" : "Выбранное вино") : (isEn ? "Russian Wines" : "Вина России"));
 
             try {
                 const lbl = document.getElementById('map-target-wine-label');
                 if (lbl) {
                     if (stores.length > 0) {
-                        lbl.innerHTML = `Выбрано: <b>${wineTitle}</b> — найдено ${stores.length} реальных винных магазинов по данным OpenStreetMap`;
+                        lbl.innerHTML = isEn
+                            ? `Selected: <b>${wineTitle}</b> — found ${stores.length} real wine stores on OpenStreetMap`
+                            : `Выбрано: <b>${wineTitle}</b> — найдено ${stores.length} реальных винных магазинов по данным OpenStreetMap`;
                     } else {
-                        lbl.innerHTML = `Выбрано: <b>${wineTitle}</b> — поблизости нет винных магазинов на карте OpenStreetMap`;
+                        lbl.innerHTML = isEn
+                            ? `Selected: <b>${wineTitle}</b> — no nearby wine stores found on OpenStreetMap`
+                            : `Выбрано: <b>${wineTitle}</b> — поблизости нет винных магазинов на карте OpenStreetMap`;
                     }
                 }
 
                 if (userLocationMarker && osmMapInstance) osmMapInstance.removeLayer(userLocationMarker);
+                const youHereTxt = isEn ? 'You are here' : 'Вы здесь';
                 const userIcon = L.divIcon({
                     className: 'vina-map-user-marker',
                     html: `
                         <div class="vina-user-marker-inner">
                             <img src="znak.png" class="vina-user-znak-img" alt="">
-                            <span class="vina-user-text">Вы здесь</span>
+                            <span class="vina-user-text">${youHereTxt}</span>
                         </div>
                     `,
                     iconSize: [95, 30],
                     iconAnchor: [47, 15]
                 });
                 userLocationMarker = L.marker([userLatitude, userLongitude], { icon: userIcon }).addTo(osmMapInstance)
-                    .bindPopup('<b>Вы здесь</b>');
+                    .bindPopup(`<b>${youHereTxt}</b>`);
 
                 storeLeafletMarkers.forEach(m => osmMapInstance.removeLayer(m));
                 storeLeafletMarkers = [];
@@ -4136,7 +4319,13 @@
                 const listEl = document.getElementById('vina-stores-list');
 
                 if (stores.length === 0) {
-                    listEl.innerHTML = `
+                    listEl.innerHTML = isEn ? `
+                        <div style="padding: 22px 18px; text-align: center; color: #475569; font-size: 13px; background: #fff; border-radius: 14px; border: 1px dashed #cbd5e1; margin: 10px 0;">
+                            <div style="font-size: 30px; margin-bottom: 6px;">🍷🗺️</div>
+                            <div style="font-weight: 700; color: #0f172a; margin-bottom: 4px; font-size: 15px;">No nearby wine stores found</div>
+                            <div style="line-height: 1.45; color: #64748b;">Within walking distance (~5 km), no specialized wine boutiques are listed on OpenStreetMap. Try refreshing your location.</div>
+                        </div>
+                    ` : `
                         <div style="padding: 22px 18px; text-align: center; color: #475569; font-size: 13px; background: #fff; border-radius: 14px; border: 1px dashed #cbd5e1; margin: 10px 0;">
                             <div style="font-size: 30px; margin-bottom: 6px;">🍷🗺️</div>
                             <div style="font-weight: 700; color: #0f172a; margin-bottom: 4px; font-size: 15px;">Винные магазины поблизости не найдены</div>
@@ -4164,13 +4353,19 @@
                         iconAnchor: [22, 48]
                     });
 
-                    const brandNote = (s.brand && s.brand !== 'Винный магазин' && s.brand !== s.name) ? `<br><small style="color:#64748b;">${s.brand}</small>` : '';
+                    const brandNote = (s.brand && s.brand !== 'Винный магазин' && s.brand !== 'Wine Store' && s.brand !== s.name) ? `<br><small style="color:#64748b;">${s.brand}</small>` : '';
+                    const popupHtml = isEn
+                        ? `<b>${idx + 1}. ${s.name}</b>${brandNote}<br>${s.address}<br>${s.distance_meters} m (~${s.walk_time_minutes} min walk)<br>In stock: <b>${s.bottles_left} btl.</b>`
+                        : `<b>${idx + 1}. ${s.name}</b>${brandNote}<br>${s.address}<br>${s.distance_meters} м (~${s.walk_time_minutes} мин пешком)<br>В наличии: <b>${s.bottles_left} бут.</b>`;
                     const m = L.marker([s.lat, s.lon], { icon: storeIcon }).addTo(osmMapInstance)
-                        .bindPopup(`<b>${idx + 1}. ${s.name}</b>${brandNote}<br>${s.address}<br>${s.distance_meters} м (~${s.walk_time_minutes} мин пешком)<br>В наличии: <b>${s.bottles_left} бут.</b>`);
+                        .bindPopup(popupHtml);
                     storeLeafletMarkers.push(m);
 
                     const cleanName = (s.name || '').replace(/['"]/g, '');
-                    const brandSub = (s.brand && s.brand !== 'Винный магазин') ? ` • ${s.brand}` : '';
+                    const brandSub = (s.brand && s.brand !== 'Винный магазин' && s.brand !== 'Wine Store') ? ` • ${s.brand}` : '';
+                    const metaHtml = isEn
+                        ? `<b>${s.distance_meters} m</b> (~${s.walk_time_minutes} min walk) • In stock: ${s.bottles_left} btl. • OpenStreetMap`
+                        : `<b>${s.distance_meters} м</b> (~${s.walk_time_minutes} мин пешком) • В наличии: ${s.bottles_left} бут. • OpenStreetMap`;
 
                     return `
                         <div class="store-card-row" id="store-row-${s.store_id}">
@@ -4178,11 +4373,11 @@
                                 <div class="store-card-name">${idx + 1}. ${s.name}${brandSub}</div>
                                 <div class="store-card-addr">${s.address} • ${s.working_hours}</div>
                                 <div class="store-card-meta">
-                                    <b>${s.distance_meters} м</b> (~${s.walk_time_minutes} мин пешком) • В наличии: ${s.bottles_left} бут. • OpenStreetMap
+                                    ${metaHtml}
                                 </div>
                             </div>
                             <button class="btn-store-route" onclick="startWalkingNavigation(${s.lat}, ${s.lon}, '${cleanName}', '${s.store_id}')">
-                                Путь
+                                ${isEn ? 'Route' : 'Путь'}
                             </button>
                         </div>
                     `;
@@ -4193,6 +4388,7 @@
                 console.warn(e);
             }
         }
+        window.load5NearbyWalkingStores = load5NearbyWalkingStores;
 
         async function startWalkingNavigation(destLat, destLon, shopName, storeId) {
             activeShopTarget = { lat: destLat, lon: destLon, name: shopName };
@@ -4220,9 +4416,10 @@
         }
 
         async function drawOsrmFootRoute(fromLat, fromLon, toLat, toLon, shopName) {
+            const isEn = window.getAppLang && window.getAppLang() === 'en';
             const hud = document.getElementById('vina-walk-hud');
             hud.style.display = 'block';
-            document.getElementById('walk-hud-title').innerText = `Идем пешком в: ${shopName}`;
+            document.getElementById('walk-hud-title').innerText = isEn ? `Walking to: ${shopName}` : `Идем пешком в: ${shopName}`;
 
             try {
                 const url = `https://router.project-osrm.org/route/v1/foot/${fromLon},${fromLat};${toLon},${toLat}?overview=full&geometries=geojson`;
@@ -4236,7 +4433,9 @@
 
                     const dist = Math.round(d.routes[0].distance);
                     const mins = Math.max(1, Math.round(dist / 78));
-                    document.getElementById('walk-hud-stats').innerHTML = `Осталось идти: <b>${dist} м</b> (~${mins} мин пешком). GPS-трекер ведет вас по маршруту.`;
+                    document.getElementById('walk-hud-stats').innerHTML = isEn
+                        ? `Remaining distance: <b>${dist} m</b> (~${mins} min walk). Live GPS guidance active.`
+                        : `Осталось идти: <b>${dist} м</b> (~${mins} мин пешком). GPS-трекер ведет вас по маршруту.`;
                     return;
                 }
             } catch (e) {

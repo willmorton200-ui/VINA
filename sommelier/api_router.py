@@ -1,6 +1,6 @@
 import asyncio
 from typing import Optional, Any
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 import numpy as np
 
@@ -13,6 +13,29 @@ try:
         get_5_nearest_walking_stores,
         generate_sommelier_toast_and_advice,
     )
+    from .i18n import (
+        get_request_lang,
+        translate_wine_dict_en,
+        translate_region,
+        translate_winery,
+        translate_grape,
+        translate_category,
+        translate_color,
+        translate_sugar,
+        translate_wine_name,
+        translate_dish_recommendation_en,
+        translate_evidence_card_en,
+        translate_analog_card_en,
+        get_wine_history_record_en,
+        get_quick_dishes_en,
+        translate_osm_stores_list_en,
+        generate_sommelier_toast_v2_en,
+        CATEGORY_MAP_EN_RU,
+        SUGAR_MAP_EN_RU,
+        REGION_MAP_EN_RU,
+        WINERY_MAP_EN_RU,
+        GRAPE_MAP_EN_RU,
+    )
 except ImportError:
     from sommelier.pairing_engine import SommelierPairingEngine, DishBuilderInput
     from sommelier.stores_and_history import (
@@ -20,6 +43,29 @@ except ImportError:
         get_simple_and_unusual_dishes,
         get_5_nearest_walking_stores,
         generate_sommelier_toast_and_advice,
+    )
+    from sommelier.i18n import (
+        get_request_lang,
+        translate_wine_dict_en,
+        translate_region,
+        translate_winery,
+        translate_grape,
+        translate_category,
+        translate_color,
+        translate_sugar,
+        translate_wine_name,
+        translate_dish_recommendation_en,
+        translate_evidence_card_en,
+        translate_analog_card_en,
+        get_wine_history_record_en,
+        get_quick_dishes_en,
+        translate_osm_stores_list_en,
+        generate_sommelier_toast_v2_en,
+        CATEGORY_MAP_EN_RU,
+        SUGAR_MAP_EN_RU,
+        REGION_MAP_EN_RU,
+        WINERY_MAP_EN_RU,
+        GRAPE_MAP_EN_RU,
     )
 
 sommelier_router = APIRouter(prefix="/api/v2", tags=["VINA Sommelier & Map"])
@@ -179,8 +225,9 @@ def bind_existing_vina_catalog(raw_catalog: Any) -> None:
 
 
 @sommelier_router.get("/catalog/facets")
-async def get_catalog_facets():
+async def get_catalog_facets(request: Request, lang: Optional[str] = Query(None)):
     """Возвращает уникальные списки регионов, виноделен, сортов и категорий для фильтров."""
+    cur_lang = get_request_lang(request, lang)
     regions = set()
     wineries = set()
     grapes = set()
@@ -188,19 +235,22 @@ async def get_catalog_facets():
     for item in engine.catalog.values():
         reg = item.get("region")
         if reg and str(reg).strip():
-            regions.add(str(reg).strip())
+            r_val = str(reg).strip()
+            regions.add(translate_region(r_val, "en") if cur_lang == "en" else r_val)
         win = item.get("winery")
         if win and str(win).strip():
-            wineries.add(str(win).strip())
+            w_val = str(win).strip()
+            wineries.add(translate_winery(w_val, "en") if cur_lang == "en" else w_val)
         cat = item.get("category")
         if cat and str(cat).strip():
-            categories.add(str(cat).strip())
+            c_val = str(cat).strip()
+            categories.add(translate_category(c_val, "en") if cur_lang == "en" else c_val)
         grp = item.get("grape")
         if grp:
             for g in str(grp).replace(";", ",").split(","):
                 g_c = g.strip()
                 if g_c and len(g_c) > 2:
-                    grapes.add(g_c)
+                    grapes.add(translate_grape(g_c, "en") if cur_lang == "en" else g_c)
     return {
         "regions": sorted(list(regions)),
         "wineries": sorted(list(wineries))[:80],
@@ -211,6 +261,7 @@ async def get_catalog_facets():
 
 @sommelier_router.get("/catalog")
 async def list_catalog(
+    request: Request,
     color: Optional[str] = Query(None, description="Красное | Белое | Розовое"),
     sugar: Optional[str] = Query(None, description="Сухое | Полусухое | Сладкое"),
     category: Optional[str] = Query(None, description="Тихие | Игристые | Ликерные"),
@@ -223,28 +274,55 @@ async def list_catalog(
     q: Optional[str] = Query(None, description="Текстовый поиск по названию или сорту"),
     limit: int = Query(24, description="Количество на страницу"),
     offset: int = Query(0, description="Смещение"),
+    lang: Optional[str] = Query(None, description="ru | en"),
 ):
     """Возвращает каталог вин с органолептикой, простыми/необычными блюдами и бейджем Истории."""
+    cur_lang = get_request_lang(request, lang)
     matched = []
+
+    # Normalize English filter values so they match Russian catalog entries too
+    color_filter = CATEGORY_MAP_EN_RU.get(color.strip().lower(), color) if color else None
+    sugar_filter = SUGAR_MAP_EN_RU.get(sugar.strip().lower(), sugar) if sugar else None
+    region_filter = REGION_MAP_EN_RU.get(region.strip().lower(), region) if region else None
+    winery_filter = WINERY_MAP_EN_RU.get(winery.strip().lower(), winery) if winery else None
+    grape_filter = GRAPE_MAP_EN_RU.get(grape.strip().lower(), grape) if grape else None
+
     for slug, item in engine.catalog.items():
-        if color:
-            col_l = color.lower()
-            if col_l in ["игристое", "игристые"]:
-                is_sparkling = any(k in f"{item.get('name', '')} {item.get('category', '')} {item.get('sugar', '')}".lower() for k in ["игрист", "брют", "шампан", "кава", "просекко", "франчакорта"])
+        if color_filter:
+            col_l = color_filter.lower()
+            if col_l in ["игристое", "игристые", "sparkling"]:
+                is_sparkling = any(k in f"{item.get('name', '')} {item.get('category', '')} {item.get('sugar', '')}".lower() for k in ["игрист", "брют", "шампан", "кава", "просекко", "франчакорта", "brut", "sparkling"])
                 if not is_sparkling:
                     continue
             elif col_l not in str(item.get("color", "")).lower() and col_l not in str(item.get("category", "")).lower():
                 continue
-        if sugar and sugar.lower() not in str(item.get("sugar", "")).lower():
-            continue
-        if category and category.lower() not in str(item.get("category", "")).lower():
-            continue
-        if region and region.lower() not in str(item.get("region", "")).lower():
-            continue
-        if winery and winery.lower() not in str(item.get("winery", "")).lower():
-            continue
-        if grape and grape.lower() not in str(item.get("grape", "")).lower():
-            continue
+        if sugar_filter:
+            sf_l = sugar_filter.lower()
+            item_sug = f"{item.get('sugar', '')} {item.get('name', '')} {slug}".lower()
+            if sf_l not in item_sug:
+                continue
+        if category:
+            cat_f = CATEGORY_MAP_EN_RU.get(category.strip().lower(), category).lower()
+            if cat_f not in str(item.get("category", "")).lower():
+                continue
+        if region_filter:
+            rf_l = region_filter.lower()
+            reg_ru = str(item.get("region", "")).lower()
+            reg_en = translate_region(item.get("region", ""), "en").lower()
+            if rf_l not in reg_ru and region.lower() not in reg_en:
+                continue
+        if winery_filter:
+            wf_l = winery_filter.lower()
+            win_ru = str(item.get("winery", "")).lower()
+            win_en = translate_winery(item.get("winery", ""), "en").lower()
+            if wf_l not in win_ru and winery.lower() not in win_en:
+                continue
+        if grape_filter:
+            gf_l = grape_filter.lower()
+            grp_ru = str(item.get("grape", "")).lower()
+            grp_en = translate_grape(item.get("grape", ""), "en").lower()
+            if gf_l not in grp_ru and grape.lower() not in grp_en:
+                continue
 
         has_hist = slug in HISTORICAL_WINES_DB or bool(item.get("has_history"))
         if only_with_history and not has_hist:
@@ -252,7 +330,11 @@ async def list_catalog(
 
         if q:
             q_clean = q.lower().strip()
-            text_haystack = f"{item.get('name', '')} {item.get('grape', '')} {item.get('winery', '')} {item.get('region', '')}".lower()
+            text_haystack = (
+                f"{item.get('name', '')} {item.get('grape', '')} {item.get('winery', '')} {item.get('region', '')} "
+                f"{translate_wine_name(item.get('name', ''), 'en')} {translate_grape(item.get('grape', ''), 'en')} "
+                f"{translate_winery(item.get('winery', ''), 'en')} {translate_region(item.get('region', ''), 'en')} {slug}"
+            ).lower()
             if q_clean not in text_haystack:
                 continue
 
@@ -289,25 +371,37 @@ async def list_catalog(
 
     results = []
     for slug, item, vec, has_hist, wine_rating in page_slice:
-        quick_dishes = get_simple_and_unusual_dishes(
-            acidity=vec.acidity,
-            tannins=vec.tannins,
-            body=vec.body,
-            sweetness=vec.sweetness,
-            wine_slug=slug,
-        )
+        if cur_lang == "en":
+            qd_payload = get_quick_dishes_en(
+                acidity=vec.acidity,
+                tannins=vec.tannins,
+                body=vec.body,
+                sweetness=vec.sweetness,
+                wine_slug=slug,
+            )
+            base_item = translate_wine_dict_en(item)
+        else:
+            quick_dishes = get_simple_and_unusual_dishes(
+                acidity=vec.acidity,
+                tannins=vec.tannins,
+                body=vec.body,
+                sweetness=vec.sweetness,
+                wine_slug=slug,
+            )
+            qd_payload = {
+                "simple": [d.model_dump() for d in quick_dishes["simple"]],
+                "unusual": [d.model_dump() for d in quick_dishes["unusual"]],
+            }
+            base_item = item
 
         results.append({
-            **item,
+            **base_item,
             "slug": slug,
             "rating": wine_rating,
             "price": item.get("price") or (750 + (abs(hash(slug)) % 145) * 10),
             "has_history": has_hist,
             "organoleptic": vec.model_dump(),
-            "quick_dishes": {
-                "simple": [d.model_dump() for d in quick_dishes["simple"]],
-                "unusual": [d.model_dump() for d in quick_dishes["unusual"]],
-            },
+            "quick_dishes": qd_payload,
         })
 
     return {
@@ -320,15 +414,32 @@ async def list_catalog(
 
 
 @sommelier_router.get("/wine/{wine_slug}/full-sommelier")
-async def get_wine_full_sommelier(wine_slug: str):
+async def get_wine_full_sommelier(wine_slug: str, request: Request, lang: Optional[str] = Query(None)):
     """Заменяет примитивный текстовый сомелье в Сканере и Каталоге на полный разбор."""
+    cur_lang = get_request_lang(request, lang)
     if wine_slug not in engine.catalog:
-        raise HTTPException(status_code=404, detail="Вино не найдено в каталоге")
+        raise HTTPException(status_code=404, detail="Wine not found in catalog" if cur_lang == "en" else "Вино не найдено в каталоге")
 
     item = engine.catalog[wine_slug]
     vec = engine.wine_vectors[wine_slug]
     dishes = engine.recommend_dishes_for_wine(wine_slug, top_k=4)
     analogs = engine.find_wine_analogs(wine_slug)
+
+    if cur_lang == "en":
+        qd = get_quick_dishes_en(vec.acidity, vec.tannins, vec.body, vec.sweetness, wine_slug)
+        ev_pairings = [translate_dish_recommendation_en(d.model_dump() if hasattr(d, "model_dump") else d.dict()) for d in dishes]
+        en_analogs = [translate_analog_card_en(a.model_dump() if hasattr(a, "model_dump") else a.dict()) for a in analogs]
+        history = get_wine_history_record_en(wine_slug)
+        return {
+            "wine": translate_wine_dict_en(item),
+            "organoleptic": vec,
+            "simple_dishes": qd["simple"],
+            "unusual_dishes": qd["unusual"],
+            "evidence_pairings": ev_pairings,
+            "analogs": en_analogs,
+            "history": history,
+        }
+
     quick_dishes = get_simple_and_unusual_dishes(
         vec.acidity, vec.tannins, vec.body, vec.sweetness, wine_slug
     )
@@ -345,14 +456,14 @@ async def get_wine_full_sommelier(wine_slug: str):
     }
 
 
-def _build_wine_set(wine_slug: str, count: int):
+def _build_wine_set(wine_slug: str, count: int, lang: str = "ru"):
     """Генерация сета из `count` (2..7) подобных вин по стилю и органолептике."""
     count = max(2, min(7, count))
     if wine_slug not in engine.catalog:
         if engine.catalog:
             wine_slug = next(iter(engine.catalog.keys()))
         else:
-            raise HTTPException(status_code=404, detail="Каталог пуст")
+            raise HTTPException(status_code=404, detail="Catalog is empty" if lang == "en" else "Каталог пуст")
 
     base = engine.catalog[wine_slug]
     target_vec = engine.wine_vectors[wine_slug].to_numpy()
@@ -378,15 +489,26 @@ def _build_wine_set(wine_slug: str, count: int):
     for it in result_items:
         s = it.get("slug") or it.get("id")
         rating_val = str(it.get("rating") or "4.8")
-        meta_parts = [
-            it.get("region") or "Россия",
-            f"{it.get('color') or 'Вино'}, {str(it.get('sugar') or 'сухое').lower()}",
-            "0.75 л"
-        ]
+        if lang == "en":
+            reg_str = translate_region(it.get("region") or "Россия", "en")
+            col_str = translate_category(it.get("category") or it.get("color") or "Красное", "en")
+            sug_str = translate_sugar(it.get("sugar") or "Сухое", "en").lower()
+            meta_parts = [reg_str, f"{col_str}, {sug_str}", "0.75 L"]
+            title_str = translate_wine_name(it.get("name") or it.get("title") or s, "en")
+            winery_str = translate_winery(it.get("winery") or "Винодельня России", "en")
+        else:
+            meta_parts = [
+                it.get("region") or "Россия",
+                f"{it.get('color') or 'Вино'}, {str(it.get('sugar') or 'сухое').lower()}",
+                "0.75 л"
+            ]
+            title_str = it.get("name") or it.get("title") or s
+            winery_str = it.get("winery") or "Винодельня России"
+
         formatted.append({
             "slug": s,
-            "title": it.get("name") or it.get("title") or s,
-            "winery": it.get("winery") or "Винодельня России",
+            "title": title_str,
+            "winery": winery_str,
             "meta": ", ".join(meta_parts),
             "rating": rating_val,
             "reviews": str(it.get("reviews") or "18"),
@@ -394,7 +516,7 @@ def _build_wine_set(wine_slug: str, count: int):
         })
 
     return {
-        "base_wine": base,
+        "base_wine": translate_wine_dict_en(base) if lang == "en" else base,
         "count": len(formatted),
         "items": formatted
     }
@@ -402,48 +524,67 @@ def _build_wine_set(wine_slug: str, count: int):
 
 @sommelier_router.get("/wine-set")
 async def get_wine_set_endpoint(
+    request: Request,
     wine_slug: str = Query("loco-cimbali-blanc-de-neige-shardone-beloe-suhoe-131", description="Slug базового вина"),
-    count: int = Query(4, ge=2, le=7, description="Количество вин в сете (от 2 до 7)")
+    count: int = Query(4, ge=2, le=7, description="Количество вин в сете (от 2 до 7)"),
+    lang: Optional[str] = Query(None),
 ):
-    return _build_wine_set(wine_slug, count)
+    cur_lang = get_request_lang(request, lang)
+    return _build_wine_set(wine_slug, count, cur_lang)
 
 
 @sommelier_router.get("/wine/{wine_slug}/set")
 async def get_wine_set_by_slug(
     wine_slug: str,
-    count: int = Query(4, ge=2, le=7, description="Количество вин в сете (от 2 до 7)")
+    request: Request,
+    count: int = Query(4, ge=2, le=7, description="Количество вин в сете (от 2 до 7)"),
+    lang: Optional[str] = Query(None),
 ):
-    return _build_wine_set(wine_slug, count)
+    cur_lang = get_request_lang(request, lang)
+    return _build_wine_set(wine_slug, count, cur_lang)
 
 
 @sommelier_router.get("/wine/{wine_slug}/history")
-async def get_wine_history_story(wine_slug: str):
+async def get_wine_history_story(wine_slug: str, request: Request, lang: Optional[str] = Query(None)):
     """Возвращает историческое досье вина (знаменитости, Ялта 1945, история создания)."""
+    cur_lang = get_request_lang(request, lang)
     if wine_slug not in HISTORICAL_WINES_DB:
-        raise HTTPException(status_code=404, detail="Для этого вина историческое досье еще не заполнено")
+        raise HTTPException(
+            status_code=404,
+            detail="Historical dossier is not yet available for this wine" if cur_lang == "en" else "Для этого вина историческое досье еще не заполнено"
+        )
+    if cur_lang == "en":
+        return get_wine_history_record_en(wine_slug) or HISTORICAL_WINES_DB[wine_slug]
     return HISTORICAL_WINES_DB[wine_slug]
 
 
 @sommelier_router.get("/map/nearby-stores")
 async def get_nearby_stores_endpoint(
+    request: Request,
     lat: float = Query(45.0355, description="Широта пользователя"),
     lon: float = Query(38.9753, description="Долгота пользователя"),
     wine_slug: Optional[str] = Query(None, description="Опциональный slug выбранного вина"),
+    lang: Optional[str] = Query(None),
 ):
     """Возвращает 5 ближайших магазинов в пешей доступности для карты OpenStreetMap."""
+    cur_lang = get_request_lang(request, lang)
     price = 990
     wine_name = None
     if wine_slug and wine_slug in engine.catalog:
         w = engine.catalog[wine_slug]
         price = int(w.get("price") or 990)
-        wine_name = w.get("name")
+        wine_name = translate_wine_name(w.get("name"), "en") if cur_lang == "en" else w.get("name")
 
     stores = await asyncio.to_thread(get_5_nearest_walking_stores, user_lat=lat, user_lon=lon, wine_slug=wine_slug, base_price=price)
+    if cur_lang == "en":
+        stores_out = translate_osm_stores_list_en(stores)
+    else:
+        stores_out = stores
     return {
         "user_location": {"lat": lat, "lon": lon},
         "selected_wine_slug": wine_slug,
         "selected_wine_name": wine_name,
-        "stores": stores,
+        "stores": stores_out,
     }
 
 
@@ -451,14 +592,34 @@ class SommelierAskRequest(BaseModel):
     occasion: str = "friends"
     question: str = ""
     wine_slug: Optional[str] = "massandra-portveyn-krasnyy-livadiya"
+    lang: Optional[str] = None
 
 
 @sommelier_router.post("/sommelier/ask")
-async def ask_sommelier_endpoint(req: SommelierAskRequest):
+async def ask_sommelier_endpoint(req: SommelierAskRequest, request: Request):
     """Закладка 'Сомелье': генерация тоста к событию и совета с привязкой к каталогу."""
+    cur_lang = get_request_lang(request, req.lang)
     slug = req.wine_slug if req.wine_slug in engine.catalog else "massandra-portveyn-krasnyy-livadiya"
     wine = engine.catalog[slug]
     vec = engine.wine_vectors[slug]
+
+    analogs = engine.find_wine_analogs(slug)
+    if cur_lang == "en":
+        toast_data = generate_sommelier_toast_v2_en(
+            occasion=req.occasion,
+            user_question=req.question,
+            wine_name=wine.get("name", slug),
+            wine_slug=slug,
+            acidity=vec.acidity,
+            tannins=vec.tannins,
+        )
+        en_analogs = [translate_analog_card_en(a.model_dump() if hasattr(a, "model_dump") else a.dict()) for a in analogs]
+        return {
+            "wine": translate_wine_dict_en(wine),
+            "organoleptic": vec,
+            "toast": toast_data,
+            "recommended_catalog_wines": en_analogs,
+        }
 
     toast_data = generate_sommelier_toast_and_advice(
         occasion=req.occasion,
@@ -468,7 +629,6 @@ async def ask_sommelier_endpoint(req: SommelierAskRequest):
         acidity=vec.acidity,
         tannins=vec.tannins,
     )
-    analogs = engine.find_wine_analogs(slug)
     return {
         "wine": wine,
         "organoleptic": vec,
@@ -478,8 +638,26 @@ async def ask_sommelier_endpoint(req: SommelierAskRequest):
 
 
 @sommelier_router.post("/sommelier/dish-to-wine")
-async def dish_to_wine_endpoint(builder: DishBuilderInput):
+async def dish_to_wine_endpoint(builder: DishBuilderInput, request: Request, lang: Optional[str] = Query(None)):
     """Подбор вина к выбранному блюду в Каталоге."""
+    cur_lang = get_request_lang(request, lang)
     dish = engine.build_custom_dish_profile(builder)
     wines = engine.recommend_wines_for_dish(dish)
+    if cur_lang == "en":
+        wines_en = []
+        nom_map = {
+            "Классическая гармония": "Classic Harmony",
+            "Умный выбор (Цена / Качество)": "Smart Value (Price / Quality)",
+            "Гастро-открытие сомелье": "Sommelier's Discovery",
+        }
+        for w in wines:
+            wd = w.model_dump() if hasattr(w, "model_dump") else w.dict()
+            wd["nomination"] = nom_map.get(wd.get("nomination", ""), wd.get("nomination", "Recommended"))
+            wd["wine_name"] = translate_wine_name(wd.get("wine_name"), "en")
+            wd["wine_color"] = translate_color(wd.get("wine_color"), "en")
+            wd["wine_sugar"] = translate_sugar(wd.get("wine_sugar"), "en")
+            wd["sommelier_pitch"] = f"Synergy score {wd.get('synergy_score', 90)}%: balanced acidity ({wd['organoleptic']['acidity']}/5) and body ({wd['organoleptic']['body']}/5) pair seamlessly with your dish."
+            wd["evidence_base"] = [translate_evidence_card_en(e) for e in wd.get("evidence_base", [])]
+            wines_en.append(wd)
+        return {"dish": dish, "wines": wines_en}
     return {"dish": dish, "wines": wines}

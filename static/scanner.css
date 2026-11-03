@@ -5869,3 +5869,77 @@ html, body {
     transform: scale(0.96);
 }
 
+
+
+/* ========================================================= */
+/* ПЕРЕКЛЮЧАТЕЛЬ ЯЗЫКА ПРИЛОЖЕНИЯ (Рус / Eng)                */
+/* ========================================================= */
+
+.vina-lang-switcher {
+    display: inline-flex;
+    align-items: center;
+    background: #f1f3f5;
+    border: 1px solid #e2e5e9;
+    border-radius: 20px;
+    padding: 2px;
+    gap: 2px;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.vina-lang-btn {
+    border: none;
+    background: transparent;
+    color: #555555;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 16px;
+    cursor: pointer;
+    line-height: 1.1;
+    transition: all 0.18s ease;
+    font-family: inherit;
+}
+
+.vina-lang-btn:hover {
+    color: #1a1a1a;
+}
+
+.vina-lang-btn.active {
+    background: #722F37;
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(114, 47, 55, 0.28);
+}
+
+.vina-lang-switcher--splash {
+    position: absolute;
+    top: 18px;
+    right: 20px;
+    z-index: 15;
+    background: rgba(20, 20, 22, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 3px;
+}
+
+.vina-lang-switcher--splash .vina-lang-btn {
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 12.5px;
+    padding: 5px 11px;
+}
+
+.vina-lang-switcher--splash .vina-lang-btn:hover {
+    color: #ffffff;
+}
+
+.vina-lang-switcher--splash .vina-lang-btn.active {
+    background: #ffffff;
+    color: #722F37;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.header-right-slot {
+    gap: 8px;
+}

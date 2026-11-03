@@ -1,10 +1,33 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- API Configuration & Bridge Support ---
+    function normalizeApiUrl(raw) {
+        if (!raw) return '';
+        let clean = raw.trim().replace(/\/+$/, '');
+        if (!clean) return '';
+        if (!/^https?:\/\//i.test(clean)) {
+            if (clean.startsWith('//')) {
+                clean = window.location.protocol + clean;
+            } else {
+                clean = 'https://' + clean;
+            }
+        }
+        return clean.replace(/\/+$/, '');
+    }
+
     function getApiBase() {
         const urlParams = new URLSearchParams(window.location.search);
-        const apiParam = urlParams.get('api');
+        let apiParam = urlParams.get('api');
+        
+        // Защита от опечаток в ссылке (например ?api//... или ?api/... без знака '=')
+        if (!apiParam && window.location.search) {
+            const match = window.location.search.match(/[?&]api\/?\/?([^&]+)/);
+            if (match && match[1]) {
+                apiParam = decodeURIComponent(match[1]);
+            }
+        }
+
         if (apiParam) {
-            const clean = apiParam.trim().replace(/\/+$/, '');
+            const clean = normalizeApiUrl(apiParam);
             localStorage.setItem('vina_api_url', clean);
             return clean;
         }
@@ -25,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const saved = localStorage.getItem('vina_api_url');
         if (saved) {
-            return saved.trim().replace(/\/+$/, '');
+            return normalizeApiUrl(saved);
         }
         return '';
     }
@@ -196,7 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     btnTestConnection.addEventListener('click', async () => {
-        const testUrl = inputApiUrl.value.trim();
+        const testUrl = normalizeApiUrl(inputApiUrl.value);
         showFeedback('Проверка соединения...', '');
         const res = await checkServerHealth(testUrl);
         if (res.ok) {
@@ -207,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     btnSaveSettings.addEventListener('click', async () => {
-        const val = inputApiUrl.value.trim().replace(/\/+$/, '');
+        const val = normalizeApiUrl(inputApiUrl.value);
         if (val) {
             localStorage.setItem('vina_api_url', val);
         } else {
@@ -1208,11 +1231,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const tannins = Number(organo.tannins || 3.5);
         const body = Number(organo.body || 4.0);
 
+        const isEn = window.getAppLang && window.getAppLang() === 'en';
         let summaryLogic = "";
         if (tannins >= 2.8) {
-            summaryLogic = `Вино обладает выраженной танинностью (${tannins.toFixed(1)}/5) и насыщенным телом (${body.toFixed(1)}/5). Танины мгновенно связываются с белком сочного мяса на гриле, устраняя вяжущее ощущение и раскрывая глубокие ягодные грани вкуса. Кислотность (${acidity.toFixed(1)}/5) освежает вкусовые рецепторы после каждого кусочка.`;
+            summaryLogic = isEn
+                ? `This wine features structured tannins (${tannins.toFixed(1)}/5) and a rich body (${body.toFixed(1)}/5). The tannins bind with the proteins of juicy grilled meat, softening astringency and unlocking deep berry notes. Its acidity (${acidity.toFixed(1)}/5) refreshes the palate after every bite.`
+                : `Вино обладает выраженной танинностью (${tannins.toFixed(1)}/5) и насыщенным телом (${body.toFixed(1)}/5). Танины мгновенно связываются с белком сочного мяса на гриле, устраняя вяжущее ощущение и раскрывая глубокие ягодные грани вкуса. Кислотность (${acidity.toFixed(1)}/5) освежает вкусовые рецепторы после каждого кусочка.`;
         } else {
-            summaryLogic = `Вино отличается бодрящей кислотностью (${acidity.toFixed(1)}/5) и деликатным телом (${body.toFixed(1)}/5). Кислотность работает как свежий лимонный сок: деликатно балансирует жирность рыбы и морепродуктов, подчеркивая природную сладость блюда без тяжести.`;
+            summaryLogic = isEn
+                ? `This wine offers vibrant acidity (${acidity.toFixed(1)}/5) and a delicate body (${body.toFixed(1)}/5). Its acidity acts like a squeeze of fresh lemon: delicately balancing the richness of fish and seafood while highlighting the natural flavors of the dish.`
+                : `Вино отличается бодрящей кислотностью (${acidity.toFixed(1)}/5) и деликатным телом (${body.toFixed(1)}/5). Кислотность работает как свежий лимонный сок: деликатно балансирует жирность рыбы и морепродуктов, подчеркивая природную сладость блюда без тяжести.`;
         }
 
         const simpleDishes = (fullData && fullData.simple_dishes) ? fullData.simple_dishes : [];
@@ -1348,10 +1376,12 @@ document.addEventListener('DOMContentLoaded', () => {
         window.currentSommelierSlug = slug;
         window.currentSommelierWineData = wineData;
 
+        const isEn = window.getAppLang && window.getAppLang() === 'en';
         const isHomeOrAll = !slug || slug === 'main-home' || slug === 'all';
-        const title = (wineData && (wineData.name || wineData.title))
+        const rawTitle = (wineData && (wineData.name || wineData.title))
             ? (wineData.name || wineData.title)
-            : (document.getElementById('detail-wine-title')?.textContent || (isHomeOrAll ? 'Все вина каталога (2108 вин)' : slug));
+            : (document.getElementById('detail-wine-title')?.textContent || (isHomeOrAll ? (isEn ? 'All Catalog Wines (2,108 wines)' : 'Все вина каталога (2108 вин)') : slug));
+        const title = (isEn && rawTitle === 'Персональный ИИ-Сомелье') ? 'Personal AI Sommelier' : rawTitle;
 
         const nameEl = document.getElementById('somm-stub-wine-name');
         if (nameEl) {
@@ -1361,9 +1391,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const welcomeEl = document.getElementById('somm-welcome-text');
         if (welcomeEl) {
             if (isHomeOrAll) {
-                welcomeEl.textContent = 'Задайте любой вопрос по вину: с чем подать, какой у него вкусовой профиль, или попросите подобрать российские вина к вашему ужину.';
+                welcomeEl.textContent = isEn
+                    ? 'Ask any question about wine: food pairings, flavor profile, or ask to select the best Russian wines for your dinner.'
+                    : 'Задайте любой вопрос по вину: с чем подать, какой у него вкусовой профиль, или попросите подобрать российские вина к вашему ужину.';
             } else {
-                welcomeEl.innerHTML = `Вы открыли сомелье для вина <strong>${escapeSommHtml(title)}</strong>. Спросите о вкусе, кислотности, идеальной температуре подачи и гастрономических сочетаниях, или попросите подобрать похожие вина из каталога.`;
+                welcomeEl.innerHTML = isEn
+                    ? `You opened the sommelier for <strong>${escapeSommHtml(title)}</strong>. Ask about its flavor, acidity, ideal serving temperature, food pairings, or similar wines from the catalog.`
+                    : `Вы открыли сомелье для вина <strong>${escapeSommHtml(title)}</strong>. Спросите о вкусе, кислотности, идеальной температуре подачи и гастрономических сочетаниях, или попросите подобрать похожие вина из каталога.`;
             }
         }
 
@@ -1432,21 +1466,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const messagesBox = document.getElementById('somm-chat-messages');
         if (messagesBox) {
+            const isEn = window.getAppLang && window.getAppLang() === 'en';
             const isHomeOrAll = !window.currentSommelierSlug || window.currentSommelierSlug === 'main-home';
-            const title = document.getElementById('somm-stub-wine-name')?.textContent || 'каталога';
+            const title = document.getElementById('somm-stub-wine-name')?.textContent || (isEn ? 'the catalog' : 'каталога');
             messagesBox.innerHTML = `
                 <div class="somm-msg somm-msg-assistant" style="display: flex; gap: 10px; align-items: flex-start;">
                     <div style="width: 32px; height: 32px; border-radius: 50%; background: #fdf2f4; border: 1px solid #f8d7da; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                         <img src="svg/public-rating.svg" style="width: 18px; height: 18px; object-fit: contain;" alt="">
                     </div>
                     <div style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px 16px 16px 16px; padding: 12px 16px; font-size: 13.5px; line-height: 1.55; color: #212529; max-width: 90%;">
-                        <p style="margin: 0 0 8px 0; font-weight: 600; color: #722F37;">Диалог очищен. Чем могу помочь?</p>
-                        <p style="margin: 0;">${isHomeOrAll ? 'Задайте любой вопрос по вину: с чем подать, какой у него вкусовой профиль, или попросите подобрать российские аналоги к вашему ужину.' : `Я готов рассказать всё о вине <strong>${escapeSommHtml(title)}</strong>.`}</p>
+                        <p style="margin: 0 0 8px 0; font-weight: 600; color: #722F37;">${isEn ? 'Chat cleared. How can I help you?' : 'Диалог очищен. Чем могу помочь?'}</p>
+                        <p style="margin: 0;">${isHomeOrAll ? (isEn ? 'Ask any question about wine: food pairings, flavor profile, or ask to find Russian analogs for your dinner.' : 'Задайте любой вопрос по вину: с чем подать, какой у него вкусовой профиль, или попросите подобрать российские аналоги к вашему ужину.') : (isEn ? `I am ready to tell you everything about <strong>${escapeSommHtml(title)}</strong>.` : `Я готов рассказать всё о вине <strong>${escapeSommHtml(title)}</strong>.`)}</p>
                         <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;">
-                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('С чем подать это вино?')">С чем подать?</button>
-                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Опиши вкус, кислотность и танины')">Профиль вкуса</button>
-                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Подбери 3 похожих российских вина')">Найти аналоги</button>
-                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Стейк')">Стейк</button>
+                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('С чем подать это вино?')">${isEn ? 'What to pair with?' : 'С чем подать?'}</button>
+                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Опиши вкус, кислотность и танины')">${isEn ? 'Flavor Profile' : 'Профиль вкуса'}</button>
+                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Подбери 3 похожих российских вина')">${isEn ? 'Find Analogs' : 'Найти аналоги'}</button>
+                            <button type="button" class="somm-chip-btn" onclick="sendSommQuickQuery('Стейк')">${isEn ? 'Steak' : 'Стейк'}</button>
                         </div>
                     </div>
                 </div>

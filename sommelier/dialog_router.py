@@ -60,7 +60,15 @@ async def ask(payload: SommelierAskRequest, request: Request) -> SommelierAskRes
     if not query:
         raise HTTPException(status_code=422, detail="Поле 'message' или 'text' обязательно")
 
+    from sommelier.i18n import (
+        get_request_lang,
+        translate_dialog_ask_response_en,
+    )
+    cur_lang = get_request_lang(request)
+
     result = await run_in_threadpool(sommelier.ask, query, payload.wine_slug)
+    if cur_lang == "en":
+        result = translate_dialog_ask_response_en(result, query)
     picks = result.get("picks", [])
 
     # Разрешение изображений бутылок из каталога VINA
@@ -111,6 +119,9 @@ async def wine_info(slug: str, request: Request, dish: str | None = Query(None, 
 
         dish_parsed = await run_in_threadpool(parse_dish, dish)
     result = await run_in_threadpool(sommelier.about_wine, slug, dish_parsed, dish)
+    from sommelier.i18n import get_request_lang, translate_dialog_wine_info_en
+    if get_request_lang(request) == "en":
+        result = translate_dialog_wine_info_en(result)
     return SommelierWineInfoResponse(
         kind=result["kind"],
         id=result.get("id"),
@@ -137,6 +148,9 @@ async def wine_alternatives(
     service = _service(request)
     sommelier = await run_in_threadpool(service.wine_lookup)
     result = await run_in_threadpool(sommelier.alternatives, slug, limit)
+    from sommelier.i18n import get_request_lang, translate_dialog_alternatives_en
+    if get_request_lang(request) == "en":
+        result = translate_dialog_alternatives_en(result)
     items = []
     for item in result.get("items", []):
         img_url = item.get("image_url") or _resolve_image_url(request, item.get("id"))

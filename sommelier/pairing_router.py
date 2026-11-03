@@ -38,25 +38,34 @@ async def pairing_dish(payload: PairingDishRequest, request: Request) -> dict[st
     """С1, С4, С5: {query, filters} -> {dish_profile, wines[], explanation, source}. До трёх бутылок: лучшая российская,
     лучшее сочетание, другой сорт, другая цена или винодельня — только российские вина каталога.
     Без блюда в справочнике и без LLM — уточняющий вопрос (kind=clarify)."""
+    from sommelier.i18n import get_request_lang, map_en_dish_query_to_ru, translate_pairing_response_en
+    cur_lang = get_request_lang(request)
+    q_text = map_en_dish_query_to_ru(payload.query) if cur_lang == "en" else payload.query
     service = _service(request)
-    return await _call(service.pair_dish, payload.query, payload.filters.model_dump(exclude_none=True), payload.dish_id, payload.scenario)
+    res = await _call(service.pair_dish, q_text, payload.filters.model_dump(exclude_none=True), payload.dish_id, payload.scenario)
+    return translate_pairing_response_en(res) if cur_lang == "en" else res
 
 
 @router.post("/analog", response_model=PairingResponse)
 async def analog(payload: PairingDishRequest, request: Request) -> dict[str, Any]:
     """Российский аналог зарубежного вина: {query: «аналог Шабли»} -> свойства вина (LLM или справочник стилей)
     и до трёх ближайших российских бутылок каталога. Вино выбирает алгоритм, не модель."""
+    from sommelier.i18n import get_request_lang, translate_pairing_response_en
+    cur_lang = get_request_lang(request)
     service = _service(request)
-    return await _call(service.analog, payload.query, payload.filters.model_dump(exclude_none=True))
+    res = await _call(service.analog, payload.query, payload.filters.model_dump(exclude_none=True))
+    return translate_pairing_response_en(res) if cur_lang == "en" else res
 
 
 @router.get("/pairing/wine/{slug}", response_model=PairingResponse)
 async def pairing_wine(slug: SLUG, request: Request) -> dict[str, Any]:
     """С2: slug бутылки (из каталога или от распознавания этикетки) -> карточка, 5 блюд и правило сорта."""
+    from sommelier.i18n import get_request_lang, translate_pairing_response_en
+    cur_lang = get_request_lang(request)
     result = await _call(_service(request).pair_wine, slug)
     if result is None:
         raise HTTPException(status_code=404, detail="wine not found")
-    return result
+    return translate_pairing_response_en(result) if cur_lang == "en" else result
 
 
 @router.get("/similar/{grape_id}", response_model=PairingResponse)

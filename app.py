@@ -11,7 +11,7 @@ import numpy as np
 import base64
 import torch
 import time
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -85,7 +85,10 @@ async def serve_index():
     index_file = STATIC_DIR / "index.html"
     if index_file.exists():
         with open(str(index_file), "r", encoding="utf-8") as f:
-            return f.read()
+            return HTMLResponse(
+                content=f.read(),
+                headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+            )
     return "<h1>VINA Scanner API is running</h1>"
 
 @app.get("/scanner", response_class=HTMLResponse)
@@ -126,6 +129,11 @@ async def get_style_css():
 async def get_app_js():
     p = STATIC_DIR / "app.js"
     return FileResponse(str(p), media_type="application/javascript") if p.exists() else JSONResponse({"error": "not found"}, 404)
+
+@app.get("/i18n.js")
+async def get_i18n_js():
+    p = STATIC_DIR / "i18n.js"
+    return FileResponse(str(p), media_type="application/javascript", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}) if p.exists() else JSONResponse({"error": "not found"}, 404)
 
 @app.get("/scanner.css")
 async def get_scanner_css():
@@ -239,7 +247,7 @@ async def process_upload(file: UploadFile = File(...)):
 CONFIDENCE_THRESHOLD = 50.0  # Порог проходимости итоговой уверенности (всё что >= 50% признается найденным в каталоге)
 
 @app.post("/v1/eval/predict")
-async def eval_predict(image: UploadFile = File(...)):
+async def eval_predict(request: Request, image: UploadFile = File(...), lang: str | None = Query(None)):
     """
     Гибридный эндпоинт v2:
     - Выпрямление этикетки CylindricalDewarpEngine & OCR
@@ -248,6 +256,13 @@ async def eval_predict(image: UploadFile = File(...)):
     - Формула бонусов ТЗ Алексея: IF = N + IB * (0.50A + 0.25C + 0.15D + 0.10F)
     - Порог проходимости итоговой уверенности: 86%
     """
+    from sommelier.i18n import get_request_lang, translate_wine_name
+    cur_lang = get_request_lang(request, lang)
+    not_found_msg = (
+        "This wine is not yet in our catalog. Would you like to send a request to add it?"
+        if cur_lang == "en"
+        else USER_FRIENDLY_MESSAGE
+    )
     t0 = time.time()
     contents = await image.read()
     nparr = np.frombuffer(contents, np.uint8)
@@ -329,7 +344,7 @@ async def eval_predict(image: UploadFile = File(...)):
 
             return {
                 "slug": best_slug if is_in_catalog else None,
-                "name": wine_info.get("name", "") if is_in_catalog else "",
+                "name": (translate_wine_name(wine_info.get("name", ""), "en") if cur_lang == "en" else wine_info.get("name", "")) if is_in_catalog else "",
                 "score": round(best["IF"] / 100.0, 4),
                 "confidence": round(best["IF"] / 100.0, 4),
                 "confidence_percent": final_conf,
@@ -338,9 +353,12 @@ async def eval_predict(image: UploadFile = File(...)):
                 "bonus_breakdown": {"A": best["A"], "C": best["C"], "D": best["D"], "F": best["F"]},
                 "matched_words": best.get("matched", {}),
                 "ocr_text": ocr_text[:200] if ocr_text else "",
-                "candidates": candidates,
+                "candidates": [
+                    {**c, "name": translate_wine_name(c.get("name", ""), "en")} if cur_lang == "en" else c
+                    for c in candidates
+                ],
                 "status": "found" if is_in_catalog else "not_in_catalog",
-                "message": "" if is_in_catalog else USER_FRIENDLY_MESSAGE,
+                "message": "" if is_in_catalog else not_found_msg,
                 "req_id": req_id,
                 "engine": "hybrid_v2 (SigLIP2 + DINOv2-LoRA + OCR Formula)",
                 "total_time_ms": round((time.time() - t0) * 1000, 1),
@@ -445,10 +463,14 @@ async def admin_update_status(req_id: str, req: UpdateStatusRequest):
 
 
 @app.get("/api/wine/{slug}")
-async def get_wine_card(slug: str):
+async def get_wine_card(slug: str, request: Request, lang: str | None = Query(None)):
+    from sommelier.i18n import get_request_lang, translate_wine_dict_en
+    cur_lang = get_request_lang(request, lang)
     wine = catalog.get_wine(slug)
     if not wine:
         raise HTTPException(status_code=404, detail="Wine not found")
+    if cur_lang == "en":
+        return translate_wine_dict_en(wine)
     return wine
 
 @app.get("/api/image/{slug}")
